@@ -9,15 +9,18 @@ map<string, mesh> meshes;
 effect eff;
 texture tex;
 free_camera cam;
-double cursor_x = 0.0;
-double cursor_y = 0.0;
+double *cursor_x;
+double *cursor_y;
+
 
 bool initialise() {
   // *********************************
+	cursor_x = new double;
+	cursor_y = new double;
   // Set input mode - hide the cursor
-
+	glfwSetInputMode(renderer::get_window(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
   // Capture initial mouse position
-
+	glfwGetCursorPos(renderer::get_window(), cursor_x, cursor_y);
   // *********************************
   return true;
 }
@@ -77,39 +80,41 @@ bool update(float delta_time) {
        (static_cast<float>(renderer::get_screen_height()) / static_cast<float>(renderer::get_screen_width()))) /
       static_cast<float>(renderer::get_screen_height());
 
-  double current_x;
-  double current_y;
+  double prev_x = *cursor_x;
+  double prev_y = *cursor_y;
   // *********************************
   // Get the current cursor position
-
+  glfwGetCursorPos(renderer::get_window(), cursor_x, cursor_y);
   // Calculate delta of cursor positions from last frame
-
-
+  double delta_x = *cursor_x - prev_x;
+  double delta_y = *cursor_y - prev_y;
   // Multiply deltas by ratios - gets actual change in orientation
-
-
+  float theta_y = delta_x * ratio_width * 1.3f;
+  float theta_x = delta_y * ratio_height * 1.3f;
   // Rotate cameras by delta
   // delta_y - x-axis rotation
   // delta_x - y-axis rotation
-
+  cam.rotate(theta_y, -theta_x);
   // Use keyboard to move the camera - WSAD
-
-
-
-
-
-
-
-
-
-
-
+  float speed = 1.0f;
+  if (glfwGetKey(renderer::get_window(), GLFW_KEY_W))
+	  cam.move(vec3(0.0f, 0.0f, speed));
+  if (glfwGetKey(renderer::get_window(), GLFW_KEY_S))
+	  cam.move(vec3(0.0f, 0.0f, -speed));
+  if (glfwGetKey(renderer::get_window(), GLFW_KEY_A))
+	  cam.move(vec3(-speed, 0.0f, 0.0f));
+  if (glfwGetKey(renderer::get_window(), GLFW_KEY_D))
+	  cam.move(vec3(speed, 0.0f, 0.0f));
+  if (glfwGetKey(renderer::get_window(), GLFW_KEY_SPACE))
+	  cam.move(vec3(0.0f, speed, 0.0f));
+  if (glfwGetKey(renderer::get_window(), GLFW_KEY_LEFT_CONTROL))
+	  cam.move(vec3(0.0f, -speed, 0.0f));
 
 
   // Move camera
 
   // Update the camera
-
+  cam.update(delta_time);
   // Update cursor pos
 
 

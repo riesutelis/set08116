@@ -47,10 +47,10 @@ bool load_content() {
   // 2 - mipmaps, no anisotropic
   // 3 - mipmaps, anisotropic
   // ******************************
-  texs[0] = texture("textures/checker.png", false, false);
-  texs[1] = texture("textures/checker.png", false, true);
-  texs[2] = texture("textures/checker.png", true, true);
-  texs[3] = texture("textures/checker.png", true, true);
+  texs[0] = texture("textures/Sign.jpg", false, false);
+  texs[1] = texture("textures/Sign.jpg", false, true);
+  texs[2] = texture("textures/Sign.jpg", true, false);
+  texs[3] = texture("textures/Sign.jpg", true, true);
 
   // Set camera properties
   cam.set_position(vec3(10.0f, 2.0f, 200.0f));
