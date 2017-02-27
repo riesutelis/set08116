@@ -20,14 +20,14 @@ layout(location = 0) out vec4 vertex_colour;
 void main() {
   // *********************************
   // Calculate position
-
+  gl_Position = MVP * vec4(position, 1.0f);
   // Calculate k
-
+  float k = max(dot(normal, light_dir), 0.0f);
   // Calculate diffuse
-
+  vec4 diff = k * (material_colour * light_colour);
   // Ensure alpha is 1
-
+  diff.a = 1.0f;
   // Output vertex colour - just diffuse
-
+  vertex_colour = diff;
   // *********************************
 }
