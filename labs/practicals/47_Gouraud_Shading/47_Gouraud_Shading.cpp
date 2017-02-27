@@ -47,37 +47,37 @@ bool load_content() {
   // - all specular is white
   // - all shininess is 25
   // Red box
-
+  meshes["box"].set_material(material(vec4(0.0f, 0.0f, 0.0f, 1.0f), vec4(1.0f, 0.0f, 0.0f, 1.0f), vec4(1.0f, 1.0f, 1.0f, 1.0f), 25.0f));
 
 
 
   // Green tetra
-
+  meshes["tetra"].set_material(material(vec4(0.0f, 0.0f, 0.0f, 1.0f), vec4(0.0f, 1.0f, 0.0f, 1.0f), vec4(1.0f, 1.0f, 1.0f, 1.0f), 25.0f));
 
 
 
   // Blue pyramid
-
+  meshes["pyramid"].set_material(material(vec4(0.0f, 0.0f, 0.0f, 1.0f), vec4(0.0f, 0.0f, 1.0f, 1.0f), vec4(1.0f, 1.0f, 1.0f, 1.0f), 25.0f));
 
 
 
   // Yellow disk
-
+  meshes["disk"].set_material(material(vec4(0.0f, 0.0f, 0.0f, 1.0f), vec4(1.0f, 1.0f, 0.0f, 1.0f), vec4(1.0f, 1.0f, 1.0f, 1.0f), 25.0f));
 
 
 
   // Magenta cylinder
-
+  meshes["cylinder"].set_material(material(vec4(0.0f, 0.0f, 0.0f, 1.0f), vec4(1.0f, 0.0f, 1.0f, 1.0f), vec4(1.0f, 1.0f, 1.0f, 1.0f), 25.0f));
 
 
 
   // Cyan sphere
-
+  meshes["sphere"].set_material(material(vec4(0.0f, 0.0f, 0.0f, 1.0f), vec4(0.0f, 1.0f, 1.0f, 1.0f), vec4(1.0f, 1.0f, 1.0f, 1.0f), 25.0f));
 
 
 
   // White torus
-
+  meshes["torus"].set_material(material(vec4(0.0f, 0.0f, 0.0f, 1.0f), vec4(1.0f, 1.0f, 1.0f, 1.0f), vec4(1.0f, 1.0f, 1.0f, 1.0f), 25.0f));
 
 
 
@@ -89,16 +89,16 @@ bool load_content() {
   // *********************************
   // Set lighting values
   // ambient intensity (0.3, 0.3, 0.3)
-
+  light.set_ambient_intensity(vec4(0.3f, 0.3f, 0.3f, 1.0f));
   // Light colour white
-
+  light.set_light_colour(vec4(1.0f, 1.0f, 1.0f, 1.0f));
   // Light direction (1.0, 1.0, -1.0)
-
+  light.set_direction(vec3(1.0f, 1.0f, 1.0f));
   // Load in shaders
-
-
+  eff.add_shader("47_Gouraud_Shading/gouraud.vert", GL_VERTEX_SHADER);
+  eff.add_shader("47_Gouraud_Shading/gouraud.frag", GL_FRAGMENT_SHADER);
   // Build effect
-
+  eff.build();
   // *********************************
 
   // Set camera properties
@@ -107,6 +107,7 @@ bool load_content() {
   cam.set_projection(quarter_pi<float>(), renderer::get_screen_aspect(), 0.1f, 1000.0f);
   return true;
 }
+
 
 bool update(float delta_time) {
   if (glfwGetKey(renderer::get_window(), '1')) {
@@ -146,21 +147,22 @@ bool render() {
 
     // *********************************
     // Set M matrix uniform
-
+	glUniformMatrix4fv(eff.get_uniform_location("M"), 1, GL_FALSE, value_ptr(M));
     // Set N matrix uniform - remember - 3x3 matrix
-
+	glUniformMatrix3fv(eff.get_uniform_location("N"), 1, GL_FALSE, value_ptr(m.get_transform().get_normal_matrix()));
     // Bind material
-
+	renderer::bind(m.get_material(), "mat");
     // Bind light
-
+	renderer::bind(light, "light");
     // Bind texture
-
+	renderer::bind(tex, 0);
     // Set tex uniform
-
+	glUniform1i(eff.get_uniform_location("tex"), 0);
     // Set eye position - Get this from active camera
-
+	glUniform3fv(eff.get_uniform_location("eye_pos"), 1, value_ptr(cam.get_position()));
     // Render mesh
 
+	renderer::render(m);
     // *********************************
   }
 
