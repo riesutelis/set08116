@@ -18,7 +18,6 @@ cam_choice cam_select;
 double cursor_x;
 double cursor_y;
 
-
 directional_light light;
 vector<point_light> points;
 vector<spot_light> spots;
@@ -76,21 +75,26 @@ vec3 eye_pos()
 // Use keyboard to move the camera - WSAD for xz and space, left control for y, mouse to rotate
 void moveFreeCamera(float delta_time)
 {
-	float speed = 0.8f;
+	float speed = 0.6f;
 	float mouse_sensitivity = 2.0;
 
+	vec3 fw = free_cam.get_forward();
+	fw.y = 0.0f;
+	fw = normalize(fw);
+	vec3 left = vec3(rotate(mat4(1), half_pi<float>(), vec3(0.0f, 1.0f, 0.0f)) * vec4(fw, 1.0));
+
 	if (glfwGetKey(renderer::get_window(), GLFW_KEY_W))
-		free_cam.move(vec3(0.0f, 0.0f, speed));
+		free_cam.set_position(free_cam.get_position() + fw * speed);
 	if (glfwGetKey(renderer::get_window(), GLFW_KEY_S))
-		free_cam.move(vec3(0.0f, 0.0f, -speed));
+		free_cam.set_position(free_cam.get_position() + fw * -speed);
 	if (glfwGetKey(renderer::get_window(), GLFW_KEY_A))
-		free_cam.move(vec3(-speed, 0.0f, 0.0f));
+		free_cam.set_position(free_cam.get_position() + left * speed);
 	if (glfwGetKey(renderer::get_window(), GLFW_KEY_D))
-		free_cam.move(vec3(speed, 0.0f, 0.0f));
+		free_cam.set_position(free_cam.get_position() + left * -speed);
 	if (glfwGetKey(renderer::get_window(), GLFW_KEY_SPACE))
-		free_cam.move(vec3(0.0f, speed, 0.0f));
+		free_cam.set_position(free_cam.get_position() + vec3(0.0f, 1.0f, 0.0f) * speed);
 	if (glfwGetKey(renderer::get_window(), GLFW_KEY_LEFT_CONTROL))
-		free_cam.move(vec3(0.0f, -speed, 0.0f));
+		free_cam.set_position(free_cam.get_position() + vec3(0.0f, 1.0f, 0.0f) * -speed);
 
 	static double ratio_width = quarter_pi<float>() / static_cast<float>(renderer::get_screen_width());
 	static double ratio_height = (quarter_pi<float>() * (1.0f / static_cast<float>(renderer::get_screen_width())));
@@ -121,15 +125,21 @@ bool load_content()
 	meshes["floor"].get_transform().position = vec3(0.0f, 0.0f, 0.0f);
 	meshes["floor"].set_material(whitePlastic);
 
-	meshes["arch0"] = mesh(geometry("models/Archway.obj"));
-	meshes["arch0"].get_transform().position = vec3(0.0f, 10.0f, 0.0f);
+	meshes["arch0"] = mesh(geometry("models/arch.obj"));
+	meshes["arch0"].get_transform().position = vec3(0.0f, 5.0f, 0.0f);
 	meshes["arch0"].set_material(whitePlastic);
+
+	meshes["lamppost0"] = mesh(geometry("models/lamp.obj"));
+	meshes["lamppost0"].get_transform().position = vec3(25.0f, 0.0f, 12.0f);
+	meshes["lamppost0"].get_transform().scale = vec3(0.05f, 0.05f, 0.05f);
+	meshes["lamppost0"].set_material(whitePlastic);
 
 
 	// Load lights
-	light = directional_light(vec4(1.0f, 1.0f, 1.0f, 1.0f), vec4(1.0f, 1.0f, 1.0f, 1.0f), normalize(vec3(0.6f, -1.0f, 0.2f)));
-
-
+	light = directional_light(vec4(0.1f, 0.1f, 0.1f, 1.0f), vec4(0.5f, 0.4f, 0.4f, 1.0f), normalize(vec3(0.6f, -1.0f, 0.3f)));
+	points.push_back(point_light(vec4(1.0f, 0.9f, 0.5f, 1.0f), vec3(25.0f, 11.5f, 12.0f), 1.0f, 0.0f, 0.0f));
+	
+	
 	// Load textures
 	texs["check_1"] = texture("textures/check_1.png");
 

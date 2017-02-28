@@ -60,9 +60,13 @@ vec4 calculate_spot(in spot_light spot, in material mat, in vec3 position, in ve
 // Directional light information
 uniform directional_light light;
 // Point lights being used in the scene
-uniform point_light points[4];
+uniform point_light points[10];
 // Spot lights being used in the scene
-uniform spot_light spots[5];
+uniform spot_light spots[10];
+// Number of point lights used
+uniform int pn;
+// Number of spot lights used
+uniform int sn;
 // Material of the object being rendered
 uniform material mat;
 // Position of the eye
@@ -85,12 +89,11 @@ void main() {
 	vec3 view_dir = normalize(eye_pos - position);
 	vec4 tex_colour = texture(tex, tex_coord);
 	colour = calculate_directional(light, mat, normal, view_dir, tex_colour);
-	for (int i = 0; i < 4; i++)
+	for (int i = 0; i < pn; i++)
 		colour += calculate_point(points[i], mat, position, normal, view_dir, tex_colour);
 
-	for (int i = 0; i < 5; i++)
+	for (int i = 0; i < sn; i++)
 		colour += calculate_spot(spots[i], mat, position, normal, view_dir, tex_colour);
-	colour = calculate_directional(light, mat, normal, view_dir, tex_colour);
 	colour.a = 1.0;
   // *********************************
 }
