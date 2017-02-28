@@ -29,18 +29,13 @@ struct material
 vec4 calculate_spot(in spot_light spot, in material mat, in vec3 position, in vec3 normal, in vec3 view_dir, in vec4 tex_colour)
 {
 	// *********************************
-	// Calculate direction to the light
 	vec3 light_dir = normalize(spot.position - position);
-	// Calculate distance to light
 	float d = distance(spot.position, position);
-	// Calculate attenuation value :  (constant + (linear * d) + (quadratic * d * d)
 	float att = spot.constant + spot.linear * d + spot.quadratic * d * d;
-	// Calculate spot light intensity :  (max( dot(light_dir, -direction), 0))^power
 	float I = pow(max(dot(light_dir, -1 * spot.direction), 0.0), spot.power);
-	// Calculate light colour:  (intensity / attenuation) * light_colour
 	vec4 light_colour = I / att * spot.light_colour;
 	// *********************************
-	// Now use standard phong shading but using calculated light colour and direction
+	
 	vec4 diffuse = (mat.diffuse_reflection * light_colour) * max(dot(normal, light_dir), 0.0);
 	vec3 half_vector = normalize(light_dir + view_dir);
 	vec4 specular = (mat.specular_reflection * light_colour) * pow(max(dot(normal, half_vector), 0.0), mat.shininess);

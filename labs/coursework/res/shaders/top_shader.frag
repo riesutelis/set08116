@@ -50,7 +50,7 @@ struct material {
 #endif
 
 // Forward declarations of used functions
-vec4 calculate_direction(in directional_light light, in material mat, in vec3 normal, in vec3 view_dir,
+vec4 calculate_directional(in directional_light light, in material mat, in vec3 normal, in vec3 view_dir,
                          in vec4 tex_colour);
 vec4 calculate_point(in point_light point, in material mat, in vec3 position, in vec3 normal, in vec3 view_dir,
                      in vec4 tex_colour);
@@ -82,19 +82,15 @@ layout(location = 0) out vec4 colour;
 
 void main() {
   // *********************************
-  // Calculate view direction
-  vec3 view_dir = normalize(eye_pos - position);
-  // Sample texture
-  vec4 tex_colour = texture(tex, tex_coord);
-  // Calculate directional light colour
-  colour = calculate_direction(light, mat, normal, view_dir, tex_colour);
-  // Sum point lights
-  for (int i = 0; i < 4; i++)
-	colour += calculate_point(points[i], mat, position, normal, view_dir, tex_colour);
+	vec3 view_dir = normalize(eye_pos - position);
+	vec4 tex_colour = texture(tex, tex_coord);
+	colour = calculate_directional(light, mat, normal, view_dir, tex_colour);
+	for (int i = 0; i < 4; i++)
+		colour += calculate_point(points[i], mat, position, normal, view_dir, tex_colour);
 
-  // Sum spot lights
-  for (int i = 0; i < 5; i++)
-	colour += calculate_spot(spots[i], mat, position, normal, view_dir, tex_colour);
-  colour.a = 1.0;
+	for (int i = 0; i < 5; i++)
+		colour += calculate_spot(spots[i], mat, position, normal, view_dir, tex_colour);
+	colour = calculate_directional(light, mat, normal, view_dir, tex_colour);
+	colour.a = 1.0;
   // *********************************
 }
