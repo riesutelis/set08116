@@ -131,10 +131,16 @@ bool load_content()
 {
 	// Materials
 	material whitePlastic = material(black, white, white, 25.0f);
-	material whitePlasticNoShine = material(black, white, vec4(0.2f, 0.2f, 0.2f, 1.0f), 0.0f);
+	material whitePlasticNoShine = material(black, white, vec4(0.0f, 0.0f, 0.0f, 1.0f), 1.0f);
 	material whiteCopper = material(black, white, vec4(0.5f, 0.75, 0.6f, 0.0f), 55.0f);
 
 	// Load meshes #############################################################################################################################################
+/*
+	meshes["box"] = mesh(geometry_builder::create_box(vec3(0.5f, 0.5f, 0.5f)));
+	meshes["box"].get_transform().position = vec3(0.0f, 0.0f, -1.5f);
+	meshes["box"].set_material(whiteCopper);
+
+*/
 	meshes["floor"] = mesh(geometry_builder::create_plane());
 	meshes["floor"].get_transform().position = vec3(0.0f, 0.0f, 0.0f);
 	meshes["floor"].set_material(whitePlasticNoShine);
@@ -156,15 +162,20 @@ bool load_content()
 
 	meshes["wall0"] = mesh(geometry_builder::create_box(vec3(2.0f, 12.0f, 60.0f)));
 	meshes["wall0"].get_transform().position = vec3(-20.0f, 6.0f, 0.0f);
-	meshes["wall0"].set_material(whitePlastic);
+	meshes["wall0"].set_material(whitePlasticNoShine);
 
 	meshes["wall1"] = mesh(geometry_builder::create_box(vec3(60.0f, 12.0f, 2.0f)));
 	meshes["wall1"].get_transform().position = vec3(10.0f, 6.0f, -30.0f);
-	meshes["wall1"].set_material(whitePlastic);
+	meshes["wall1"].set_material(whitePlasticNoShine);
 
 	meshes["spotlight0"] = mesh(geometry("models/street lamp.obj"));
 	meshes["spotlight0"].get_transform().position = vec3(-18.5f, 0.0f, 5.0f);
 	meshes["spotlight0"].get_transform().scale = vec3(0.1f, 0.1f, 0.1f);
+
+	meshes["flashlight0"] = mesh(geometry("models/Flashlight.obj"));
+	meshes["flashlight0"].get_transform().position = vec3(0.0, 0.0f, 0.0f);
+	meshes["flashlight0"].get_transform().scale = vec3(0.2f, 0.2f, 0.2f);
+	meshes["flashlight0"].get_transform().orientation = vec3(0.0f, pi<float>(), 0.0f);
 
 	// Child to deviceFrameBottom
 	meshes["deviceArmVertical"] = mesh(geometry_builder::create_box(vec3(0.29f, 7.0f, 0.1f)));
@@ -179,7 +190,7 @@ bool load_content()
 	meshes["deviceArmHorizontal"].set_parent(&meshes["deviceFrameBottom"]);
 
 	// Child to deviceArmVertical
-	meshes["deviceRing"] = mesh(geometry_builder::create_torus(32, 4, 0.2f, 1.2f));
+	meshes["deviceRing"] = mesh(geometry_builder::create_torus(32, 20, 0.2f, 1.2f));
 	meshes["deviceRing"].get_transform().position = vec3(0.0f, 0.0f, 0.0f);
 	meshes["deviceRing"].get_transform().orientation = vec3(half_pi<float>(), 0.0f, 0.0f);
 	meshes["deviceRing"].set_material(whiteCopper);
@@ -237,15 +248,15 @@ bool load_content()
 
 
 	// Load lights ############################################################################################################################################
-	light = directional_light(vec4(0.003f, 0.003f, 0.003f, 1.0f), vec4(0.2f, 0.09f, 0.06f, 1.0f), normalize(vec3(0.6f, -1.0f, 0.3f)));		// evening
+	light = directional_light(vec4(0.003f, 0.003f, 0.003f, 1.0f), vec4(0.2f, 0.08f, 0.06f, 1.0f), normalize(vec3(0.6f, -1.0f, 0.3f)));		// evening
 //	light = directional_light(vec4(0.0f, 0.0f, 0.0f, 1.0f), vec4(0.0f, 0.0f, 0.0f, 1.0f), normalize(vec3(0.6f, -1.0f, 0.3f)));				// No directional
 //	light = directional_light(vec4(1.0f, 1.0f, 1.0f, 1.0f), vec4(0.0f, 0.0f, 0.0f, 1.0f), normalize(vec3(0.6f, -1.0f, 0.3f)));				// full ambient for debugging
+
 	points.push_back(point_light(vec4(1.0f, 0.9f, 0.63f, 1.0f), vec3(25.0f, 11.5f, 18.0f), 0.0f, 0.01f, 0.01f));							// Lamppost0
-	points[0].set_range(100.0f);
 	points.push_back(point_light(vec4(1.0f, 0.9f, 0.63f, 1.0f), vec3(25.0f, 11.5f, 0.0f), 0.0f, 0.01f, 0.01f));								// Lamppost1
-	points[1].set_range(100.0f);
+
 	spots.push_back(spot_light(white, vec3(-16.5f, 14.3f, 5.0f), vec3(0.0f, -1.0f, 0.0f), 0.0f, 0.05f, 0.005f, 10.0f));						// spotlight0
-	spots[0].set_range(100.0f);
+	spots.push_back(spot_light(white, vec3(0.0f, 0.4f, -1.0f), vec3(0.0f, 0.0f, -1.0f), 0.0f, 0.05f, 0.0f, 10.0f));						// flashlight
 	
 	//#########################################################################################################################################################
 	
@@ -370,7 +381,7 @@ bool render()
 
 		glUniformMatrix4fv(eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(MVP));
 		glUniformMatrix4fv(eff.get_uniform_location("M"), 1, GL_FALSE, value_ptr(M));
-		glUniformMatrix3fv(eff.get_uniform_location("N"), 1, GL_FALSE, value_ptr(m.get_transform().get_normal_matrix()));
+		glUniformMatrix3fv(eff.get_uniform_location("N"), 1, GL_FALSE, value_ptr(m.get_hierarchical_normal_matrix()));
 		renderer::bind(m.get_material(), "mat");
 		renderer::bind(light, "light");
 		renderer::bind(points, "points");

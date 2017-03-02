@@ -176,7 +176,7 @@ bool render() {
 		// *********************************
 		// Set lightMVP uniform, using:
 		 //Model matrix from m
-		mat4 lMVP = P * shadow.get_view() * M;
+		mat4 lMVP = LightProjectionMat * shadow.get_view() * M;
 		// viewmatrix from the shadow map
 		
 		// Multiply together with LightProjectionMat
@@ -192,7 +192,7 @@ bool render() {
 		// Set tex uniform
 			glUniform1i(main_eff.get_uniform_location("tex"), 0);
 		// Set eye position
-			glUniform3fv(main_eff.get_uniform_location("tex"), 1, value_ptr(cam.get_position()));
+			glUniform3fv(main_eff.get_uniform_location("eye_pos"), 1, value_ptr(cam.get_position()));
 		// Bind shadow map texture - use texture unit 1
 			renderer::bind(shadow.buffer->get_depth(), 1);
 		// Set the shadow_map uniform

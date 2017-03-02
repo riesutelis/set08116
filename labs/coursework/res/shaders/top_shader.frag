@@ -88,14 +88,14 @@ void main() {
   // *********************************
 	vec3 view_dir = normalize(eye_pos - position);
 	vec4 tex_colour = texture(tex, tex_coord);
-	tex_colour *= tex_colour;
+//	tex_colour *= tex_colour;
 	colour = calculate_directional(light, mat, normal, view_dir, tex_colour);
 	for (int i = 0; i < pn; i++)
 		colour += calculate_point(points[i], mat, position, normal, view_dir, tex_colour);
 
 	for (int i = 0; i < sn; i++)
 		colour += calculate_spot(spots[i], mat, position, normal, view_dir, tex_colour);
-	colour = vec4(log2(colour.r), log2(colour.g), log2(colour.b), 1.0);
-//	colour.a = 1.0;
+//	colour = vec4(log2(colour.r), log2(colour.g), log2(colour.b), 1.0);
+	colour.a = 1.0;
   // *********************************
 }
