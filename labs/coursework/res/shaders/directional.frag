@@ -34,7 +34,6 @@ vec4 calculate_directional(in directional_light light, in material mat, in vec3 
  // *********************************
  
 	vec4 colour = ((mat.emissive + ambient + diffuse) * tex_colour) + specular;
-//	return colour;
-	return vec4(0.0, 0.0, 0.0, 1.0);
+	return colour;
 
 }

@@ -23,6 +23,17 @@ vector<point_light> points;
 vector<spot_light> spots;
 
 
+default_random_engine ran;
+// Time accumulator
+float dev_dx = 0.0f;
+float dev_dy = 0.0f;
+
+// Some constants
+vec4 white = vec4(1.0f, 1.0f, 1.0f, 1.0f);
+vec4 black = vec4(0.0f, 0.0f, 0.0f, 1.0f);
+
+
+
 bool initialise()
 {
 	// Set input mode - hide the cursor
@@ -75,7 +86,7 @@ vec3 eye_pos()
 // Use keyboard to move the camera - WSAD for xz and space, left control for y, mouse to rotate
 void moveFreeCamera(float delta_time)
 {
-	float speed = 0.6f;
+	float speed = 0.4f;
 	float mouse_sensitivity = 2.0;
 
 	vec3 fw = free_cam.get_forward();
@@ -118,37 +129,133 @@ void moveFreeCamera(float delta_time)
 
 bool load_content()
 {
-	material whitePlastic = material(vec4(0.0f, 0.0f, 0.0f, 1.0f), vec4(1.0f, 1.0f, 1.0f, 1.0f), vec4(1.0f, 1.0f, 1.0f, 1.0f), 25.0f);
+	// Materials
+	material whitePlastic = material(black, white, white, 25.0f);
+	material whitePlasticNoShine = material(black, white, vec4(0.2f, 0.2f, 0.2f, 1.0f), 0.0f);
+	material whiteCopper = material(black, white, vec4(0.5f, 0.75, 0.6f, 0.0f), 55.0f);
 
-	// Load meshes
+	// Load meshes #############################################################################################################################################
 	meshes["floor"] = mesh(geometry_builder::create_plane());
 	meshes["floor"].get_transform().position = vec3(0.0f, 0.0f, 0.0f);
-	meshes["floor"].set_material(whitePlastic);
+	meshes["floor"].set_material(whitePlasticNoShine);
 
 	meshes["arch0"] = mesh(geometry("models/arch.obj"));
-	meshes["arch0"].get_transform().position = vec3(0.0f, 5.0f, 0.0f);
+	meshes["arch0"].get_transform().position = vec3(-19.0f, 5.0f, -1.0f);
+	meshes["arch0"].get_transform().orientation = vec3(0.0f, half_pi<float>(), 0.0f);
 	meshes["arch0"].set_material(whitePlastic);
 
 	meshes["lamppost0"] = mesh(geometry("models/lamp.obj"));
-	meshes["lamppost0"].get_transform().position = vec3(25.0f, 0.0f, 12.0f);
+	meshes["lamppost0"].get_transform().position = vec3(25.0f, 0.0f, 18.0f);
 	meshes["lamppost0"].get_transform().scale = vec3(0.05f, 0.05f, 0.05f);
 	meshes["lamppost0"].set_material(whitePlastic);
 
+	meshes["lamppost1"] = mesh(geometry("models/lamp.obj"));
+	meshes["lamppost1"].get_transform().position = vec3(25.0f, 0.0f, 0.0f);
+	meshes["lamppost1"].get_transform().scale = vec3(0.05f, 0.05f, 0.05f);
+	meshes["lamppost1"].set_material(whitePlastic);
 
-	// Load lights
-	light = directional_light(vec4(0.1f, 0.1f, 0.1f, 1.0f), vec4(0.5f, 0.4f, 0.4f, 1.0f), normalize(vec3(0.6f, -1.0f, 0.3f)));
-	points.push_back(point_light(vec4(1.0f, 0.9f, 0.5f, 1.0f), vec3(25.0f, 11.5f, 12.0f), 1.0f, 0.0f, 0.0f));
+	meshes["wall0"] = mesh(geometry_builder::create_box(vec3(2.0f, 12.0f, 60.0f)));
+	meshes["wall0"].get_transform().position = vec3(-20.0f, 6.0f, 0.0f);
+	meshes["wall0"].set_material(whitePlastic);
+
+	meshes["wall1"] = mesh(geometry_builder::create_box(vec3(60.0f, 12.0f, 2.0f)));
+	meshes["wall1"].get_transform().position = vec3(10.0f, 6.0f, -30.0f);
+	meshes["wall1"].set_material(whitePlastic);
+
+	meshes["spotlight0"] = mesh(geometry("models/street lamp.obj"));
+	meshes["spotlight0"].get_transform().position = vec3(-18.5f, 0.0f, 5.0f);
+	meshes["spotlight0"].get_transform().scale = vec3(0.1f, 0.1f, 0.1f);
+
+	// Child to deviceFrameBottom
+	meshes["deviceArmVertical"] = mesh(geometry_builder::create_box(vec3(0.29f, 7.0f, 0.1f)));
+	meshes["deviceArmVertical"].get_transform().position = vec3(0.0f, 3.75f, 0.0f);
+	meshes["deviceArmVertical"].set_material(whiteCopper);
+	meshes["deviceArmVertical"].set_parent(&meshes["deviceFrameBottom"]);
+
+	// Child to deviceFrameBottom
+	meshes["deviceArmHorizontal"] = mesh(geometry_builder::create_box(vec3(20.0f, 0.3f, 0.1f)));
+	meshes["deviceArmHorizontal"].get_transform().position = vec3(0.0f, 3.5f, 0.0f);
+	meshes["deviceArmHorizontal"].set_material(whiteCopper);
+	meshes["deviceArmHorizontal"].set_parent(&meshes["deviceFrameBottom"]);
+
+	// Child to deviceArmVertical
+	meshes["deviceRing"] = mesh(geometry_builder::create_torus(32, 4, 0.2f, 1.2f));
+	meshes["deviceRing"].get_transform().position = vec3(0.0f, 0.0f, 0.0f);
+	meshes["deviceRing"].get_transform().orientation = vec3(half_pi<float>(), 0.0f, 0.0f);
+	meshes["deviceRing"].set_material(whiteCopper);
+	meshes["deviceRing"].set_parent(&meshes["deviceArmVertical"]);
+
+	// Child to deviceFrameBottom
+	meshes["deviceFrameTop"] = mesh(geometry_builder::create_box(vec3(20.0f, 0.5f, 0.5f)));
+	meshes["deviceFrameTop"].get_transform().position = vec3(0.0f, 7.5f, 0.0f);
+	meshes["deviceFrameTop"].set_material(whiteCopper);
+	meshes["deviceFrameTop"].set_parent(&meshes["deviceFrameBottom"]);
+
+	// Child to deviceFrameBottom
+	meshes["deviceFrameLeft"] = mesh(geometry_builder::create_box(vec3(0.5f, 8.0f, 0.5f)));
+	meshes["deviceFrameLeft"].get_transform().position = vec3(-10.25f, 3.75f, 0.0f);
+	meshes["deviceFrameLeft"].set_material(whiteCopper);
+	meshes["deviceFrameLeft"].set_parent(&meshes["deviceFrameBottom"]);
+
+	// Child to deviceFrameBottom
+	meshes["deviceFrameRight"] = mesh(geometry_builder::create_box(vec3(0.5f, 8.0f, 0.5f)));
+	meshes["deviceFrameRight"].get_transform().position = vec3(10.25f, 3.75f, 0.0f);
+	meshes["deviceFrameRight"].set_material(whiteCopper);
+	meshes["deviceFrameRight"].set_parent(&meshes["deviceFrameBottom"]);
+
+	// Top dog of the hierarchy tree
+	meshes["deviceFrameBottom"] = mesh(geometry_builder::create_box(vec3(20.0f, 0.5f, 0.5f)));
+	meshes["deviceFrameBottom"].get_transform().position = vec3(0.0f, 0.25f, -24.0f);
+	meshes["deviceFrameBottom"].set_material(whiteCopper);
+
+	//##########################################################################################################################################################
+
+
+
+
+
+	// Load textures -------------------------------------------------------------------------------------------------------------------------------------------
+	texs["check_1"] = texture("textures/check_1.png", true, true);
+	texs["floor"] = texture("textures/Asphalt.jpg", true, true);
+	texs["arch0"] = texture("textures/concrete.jpg", true, true);
+	texs["lamppost0"] = texture("textures/st-metal.jpg", true, true);
+	texs["lamppost1"] = texture("textures/st-metal.jpg", true, true);
+	texs["wall0"] = texture("textures/wall.jpg", true, true);
+	texs["wall1"] = texture("textures/wall.jpg", true, true);
+	texs["spotlight0"] = texture("textures/st-metal.jpg", true, true);
+	texs["deviceFrameBottom"] = texture("textures/Copper_A_albedo_M.png", true, true);
+	texs["deviceFrameRight"] = texture("textures/Copper_A_albedo_M.png", true, true);
+	texs["deviceFrameLeft"] = texture("textures/Copper_A_albedo_M.png", true, true);
+	texs["deviceFrameTop"] = texture("textures/Copper_A_albedo_M.png", true, true);
+	texs["deviceArmHorizontal"] = texture("textures/Copper_A_albedo_M.png", true, true);
+	texs["deviceArmVertical"] = texture("textures/Copper_A_albedo_M.png", true, true);
+	texs["deviceRing"] = texture("textures/Copper_A_albedo_M.png", true, true);
+
+	//----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+
+
+	// Load lights ############################################################################################################################################
+	light = directional_light(vec4(0.003f, 0.003f, 0.003f, 1.0f), vec4(0.2f, 0.09f, 0.06f, 1.0f), normalize(vec3(0.6f, -1.0f, 0.3f)));		// evening
+//	light = directional_light(vec4(0.0f, 0.0f, 0.0f, 1.0f), vec4(0.0f, 0.0f, 0.0f, 1.0f), normalize(vec3(0.6f, -1.0f, 0.3f)));				// No directional
+//	light = directional_light(vec4(1.0f, 1.0f, 1.0f, 1.0f), vec4(0.0f, 0.0f, 0.0f, 1.0f), normalize(vec3(0.6f, -1.0f, 0.3f)));				// full ambient for debugging
+	points.push_back(point_light(vec4(1.0f, 0.9f, 0.63f, 1.0f), vec3(25.0f, 11.5f, 18.0f), 0.0f, 0.01f, 0.01f));							// Lamppost0
+	points[0].set_range(100.0f);
+	points.push_back(point_light(vec4(1.0f, 0.9f, 0.63f, 1.0f), vec3(25.0f, 11.5f, 0.0f), 0.0f, 0.01f, 0.01f));								// Lamppost1
+	points[1].set_range(100.0f);
+	spots.push_back(spot_light(white, vec3(-16.5f, 14.3f, 5.0f), vec3(0.0f, -1.0f, 0.0f), 0.0f, 0.05f, 0.005f, 10.0f));						// spotlight0
+	spots[0].set_range(100.0f);
+	
+	//#########################################################################################################################################################
 	
 	
-	// Load textures
-	texs["check_1"] = texture("textures/check_1.png");
 
+	
 	// Colours
 	vector<vec4> colours{ vec4(1.0f, 0.0f, 0.0f, 1.0f), vec4(1.0f, 0.0f, 0.0f, 1.0f), vec4(1.0f, 0.0f, 0.0f, 1.0f) };
 
 	// Load in shaders
-//	eff.add_shader("shaders/basic.vert", GL_VERTEX_SHADER);
-//	eff.add_shader("shaders/basic.frag", GL_FRAGMENT_SHADER);
 	eff.add_shader("shaders/vert_shader.vert", GL_VERTEX_SHADER);
 	vector<string> frag_shaders{ "shaders/top_shader.frag", "shaders/directional.frag", "shaders/spot.frag", "shaders/point.frag" };
 	eff.add_shader(frag_shaders, GL_FRAGMENT_SHADER);
@@ -172,6 +279,7 @@ bool load_content()
 
 bool update(float delta_time)
 {
+	// Camera selection
 	if (glfwGetKey(renderer::get_window(), GLFW_KEY_1))
 		cam_select = target0;
 	else if (glfwGetKey(renderer::get_window(), GLFW_KEY_2))
@@ -180,6 +288,43 @@ bool update(float delta_time)
 	// Camera movement delegated to methods
 	if (cam_select == free0)
 		moveFreeCamera(delta_time);
+
+
+
+
+
+	// Movement for the thing----------------------------------------------------------------------------------------------------------------------------------
+	uniform_real_distribution<float> dist(-0.4f, 0.4f);
+	dev_dx += dist(ran);
+	if (meshes["deviceArmVertical"].get_transform().position.x > 8.7f)
+	{
+		meshes["deviceArmVertical"].get_transform().position.x = 8.7f;
+		dev_dx = 0.0f;
+	}
+	if (meshes["deviceArmVertical"].get_transform().position.x < -8.7f)
+	{
+		meshes["deviceArmVertical"].get_transform().position.x = -8.7f;
+		dev_dx = 0.0f;
+	}
+	meshes["deviceArmVertical"].get_transform().translate(vec3(dev_dx * delta_time, 0.0f, 0.0f));
+
+	dev_dy += dist(ran);
+	if (meshes["deviceArmHorizontal"].get_transform().position.y > 5.5f)
+	{
+		meshes["deviceArmHorizontal"].get_transform().position.y = 5.5f;
+		dev_dy = 0.0f;
+	}
+	if (meshes["deviceArmHorizontal"].get_transform().position.y < 1.5f)
+	{
+		meshes["deviceArmHorizontal"].get_transform().position.y = 1.5f;
+		dev_dy = 0.0f;
+	}
+	meshes["deviceArmHorizontal"].get_transform().translate(vec3(0.0f, dev_dy * delta_time, 0.0f));
+
+	meshes["deviceRing"].get_transform().position.y = meshes["deviceArmHorizontal"].get_transform().position.y - 3.75f;
+	//---------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
 
 
 
@@ -197,6 +342,8 @@ bool update(float delta_time)
 		break;
 	}
 
+
+
 	cout << "FPS: " << 1.0f / delta_time << endl;
 	return true;
 }
@@ -211,7 +358,14 @@ bool render()
 
 		renderer::bind(eff);
 
-		M = m.get_transform().get_transform_matrix();
+	//	M = m.get_transform().get_transform_matrix();
+
+		M = m.get_hierarchical_transform_matrix();
+
+
+
+
+
 		auto MVP = calculatePV() * M;
 
 		glUniformMatrix4fv(eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(MVP));
@@ -221,7 +375,12 @@ bool render()
 		renderer::bind(light, "light");
 		renderer::bind(points, "points");
 		renderer::bind(spots, "spots");
-		renderer::bind(texs["check_1"], 0);
+		if (texs[e.first].get_id() != 0)
+			renderer::bind(texs[e.first], 0);
+		else
+			renderer::bind(texs["check_1"], 0);
+		glUniform1i(eff.get_uniform_location("pn"), points.size());
+		glUniform1i(eff.get_uniform_location("sn"), spots.size());
 		glUniform1i(eff.get_uniform_location("tex"), 0);
 		glUniform3fv(eff.get_uniform_location("eye_pos"), 1, value_ptr(eye_pos()));
 		renderer::render(m);
@@ -235,7 +394,7 @@ void main()
 {
 	// Create application
 	app application("Graphics Coursework");
-	// Set load content, update and render methods
+	// Set initialise, load content, update and render methods
 	application.set_initialise(initialise);
 	application.set_load_content(load_content);
 	application.set_update(update);
