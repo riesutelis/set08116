@@ -140,6 +140,7 @@ bool load_content()
 
 
 	// Load normal maps ---------------------------------------------------------------------------------------------------------------------------------------
+	normal_maps["wall0"] = texture("textures/CeramicBrick_normalmap_M.jpg");
 	normal_maps["deviceFrameBottom"] = texture("textures/Copper_A_normalmap_M.png");
 	normal_maps["deviceFrameRight"] = texture("textures/Copper_A_normalmap_M.png");
 	normal_maps["deviceFrameLeft"] = texture("textures/Copper_A_normalmap_M.png");
@@ -179,11 +180,10 @@ bool load_content()
 
 	meshes["wall0"] = mesh(geometry_builder::create_box(vec3(2.0f, 12.0f, 60.0f)));
 	meshes["wall0"].get_transform().position = vec3(-20.0f, 6.0f, 0.0f);
-	meshes["wall0"].set_material(whitePlasticNoShine);
+	meshes["wall0"].set_material(whitePlastic);
 
 	meshes["wall1"] = mesh(geometry_builder::create_box(vec3(60.0f, 12.0f, 2.0f)));
 	meshes["wall1"].get_transform().position = vec3(10.0f, 6.0f, -30.0f);
-	meshes["wall1"].get_transform().orientation = vec3(0.0f, 0.0f, pi<float>());
 	meshes["wall1"].set_material(whitePlasticNoShine);
 
 	meshes["spotlight0"] = mesh(geometry("models/street lamp.obj"));
@@ -249,7 +249,7 @@ bool load_content()
 	texs["arch0"] = texture("textures/concrete.jpg", true, true);
 	texs["lamppost0"] = texture("textures/st-metal.jpg", true, true);
 	texs["lamppost1"] = texture("textures/st-metal.jpg", true, true);
-	texs["wall0"] = texture("textures/wall.jpg", true, true);
+	texs["wall0"] = texture("textures/CeramicBrick_albedo_M.jpg", true, true);
 	texs["wall1"] = texture("textures/map-8.jpg", true, true);
 	texs["spotlight0"] = texture("textures/st-metal.jpg", true, true);
 	texs["deviceFrameBottom"] = texture("textures/Copper_A_albedo_M.png", true, true);

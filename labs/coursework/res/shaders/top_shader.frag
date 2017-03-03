@@ -103,7 +103,7 @@ void main() {
 	float shade_factor = calculate_shadow(shadow_map, light_space_pos);
 
 	vec3 view_dir = normalize(eye_pos - position);
-	vec4 tex_colour = texture(tex, tex_coord);
+	vec4 tex_colour = texture(tex, vec2(tex_coord.x, -tex_coord.y));
 
 	vec3 new_normal;
 	if (map_norms > 0.0)
