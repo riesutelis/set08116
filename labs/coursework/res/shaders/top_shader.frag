@@ -1,4 +1,4 @@
-#version 440
+#version 440 core
 
 // This shader requires direction.frag, point.frag and spot.frag
 
@@ -56,6 +56,7 @@ vec4 calculate_point(in point_light point, in material mat, in vec3 position, in
                      in vec4 tex_colour);
 vec4 calculate_spot(in spot_light spot, in material mat, in vec3 position, in vec3 normal, in vec3 view_dir,
                     in vec4 tex_colour);
+float calculate_shadow(in sampler2DShadow   shadow_map, in vec4 light_space_pos);
 
 // Directional light information
 uniform directional_light light;
@@ -73,6 +74,12 @@ uniform material mat;
 uniform vec3 eye_pos;
 // Texture to sample from
 uniform sampler2D tex;
+// Texture to sample normals from
+uniform sampler2D normal_map;
+// 1 to map normals
+uniform float map_norms;
+// Shadow map to sample from
+uniform sampler2DShadow shadow_map;
 
 // Incoming position
 layout(location = 0) in vec3 position;
@@ -80,22 +87,51 @@ layout(location = 0) in vec3 position;
 layout(location = 1) in vec3 normal;
 // Incoming texture coordinate
 layout(location = 2) in vec2 tex_coord;
+// Incoming binormal
+layout (location = 3) in vec3 binormal;
+// Incoming tangent
+layout (location = 4) in vec3 tangent;
+// Incoming texture coordinate
+layout(location = 5) in vec4 light_space_pos;
 
 // Outgoing colour
 layout(location = 0) out vec4 colour;
 
 void main() {
-  // *********************************
+// *********************************
+	// Calculate shade factor
+	float shade_factor = calculate_shadow(shadow_map, light_space_pos);
+
 	vec3 view_dir = normalize(eye_pos - position);
 	vec4 tex_colour = texture(tex, tex_coord);
-//	tex_colour *= tex_colour;
-	colour = calculate_directional(light, mat, normal, view_dir, tex_colour);
-	for (int i = 0; i < pn; i++)
-		colour += calculate_point(points[i], mat, position, normal, view_dir, tex_colour);
 
-	for (int i = 0; i < sn; i++)
-		colour += calculate_spot(spots[i], mat, position, normal, view_dir, tex_colour);
-//	colour = vec4(log2(colour.r), log2(colour.g), log2(colour.b), 1.0);
+	vec3 new_normal;
+	if (map_norms > 0.0)
+	{
+		vec3 norm_sample = texture(normal_map, tex_coord).xyz;
+		new_normal = normalize(normal);
+		vec3 new_tangent = normalize(tangent);
+		vec3 new_binormal = normalize(binormal);
+
+		// Transform components to range [0, 1]
+		norm_sample = 2.0 * norm_sample - vec3(1.0, 1.0, 1.0);
+		// Generate TBN matrix
+		mat3 TBN = mat3(new_tangent, new_binormal, new_normal);
+		// Return sampled normal transformed by TBN
+		new_normal = normalize(TBN * norm_sample);
+	}
+	else
+		new_normal = normal;
+
+
+	//	tex_colour *= tex_colour;
+	colour = calculate_directional(light, mat, new_normal, view_dir, tex_colour);
+    for (int i = 0; i < pn; i++)
+		colour += calculate_point(points[i], mat, position, new_normal, view_dir, tex_colour);
+    for (int i = 0; i < sn; i++)
+		colour += calculate_spot(spots[i], mat, position, new_normal, view_dir, tex_colour);
+	colour *= shade_factor;
+    //	colour = vec4(log2(colour.r), log2(colour.g), log2(colour.b), 1.0);
 	colour.a = 1.0;
-  // *********************************
+    // *********************************
 }
