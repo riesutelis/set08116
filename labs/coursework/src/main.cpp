@@ -5,10 +5,66 @@ using namespace std;
 using namespace graphics_framework;
 using namespace glm;
 
+
+
+
+class turbo_mesh : public mesh
+{
+	// Parent for hierarchies
+	turbo_mesh* _parent = nullptr;
+
+
+public:
+	turbo_mesh() : mesh() {};
+	turbo_mesh(geometry &geom) : mesh(geom) {};
+	turbo_mesh(geometry &geom, material &mat) : mesh(geom, mat) {};
+	turbo_mesh(const turbo_mesh &other) = default;
+
+
+
+	// Gets the parent pointer
+	turbo_mesh* get_parent() { return _parent; }
+	// Gets the parent pointer
+	void set_parent(turbo_mesh* parent) { _parent = parent; }
+
+	// Gets the transform matrix for an object is a hierarchy
+	glm::mat4 get_hierarchical_transform_matrix()
+	{
+		glm::mat4 M = get_transform().get_transform_matrix();
+		turbo_mesh *current = this;
+		while (current->get_parent() != nullptr)
+		{
+			current = current->get_parent();
+			M = current->get_transform().get_transform_matrix() * M;
+		}
+		return M;
+	}
+
+	// Gets the normal matrix for an object is a hierarchy
+	glm::mat3 get_hierarchical_normal_matrix()
+	{
+		glm::mat3 N = get_transform().get_normal_matrix();
+		turbo_mesh *current = this;
+		while (current->get_parent() != nullptr)
+		{
+			current = current->get_parent();
+			N = current->get_transform().get_normal_matrix() * N;
+		}
+		return N;
+	}
+
+
+};
+
+
+
+
+
+
 geometry geom;
 effect eff;
 effect shadow_eff;
-map<string, mesh> meshes;
+map<string, turbo_mesh> meshes;
 map<string, texture> texs;
 map<string, texture> normal_maps;
 vector<shadow_map> shadows;
@@ -34,6 +90,8 @@ float dev_dy = 0.0f;
 // Some constants
 vec4 white = vec4(1.0f, 1.0f, 1.0f, 1.0f);
 vec4 black = vec4(0.0f, 0.0f, 0.0f, 1.0f);
+
+
 
 
 
@@ -159,81 +217,81 @@ bool load_content()
 	//normal_maps["box"] = texture("textures/brick_normalmap.jpg");
 	//
 
-	meshes["floor"] = mesh(geometry_builder::create_plane());
+	meshes["floor"] = turbo_mesh(geometry_builder::create_plane());
 	meshes["floor"].get_transform().position = vec3(0.0f, 0.0f, 0.0f);
 	meshes["floor"].set_material(whitePlasticNoShine);
 
-	meshes["arch0"] = mesh(geometry("models/arch.obj"));
+	meshes["arch0"] = turbo_mesh(geometry("models/arch.obj"));
 	meshes["arch0"].get_transform().position = vec3(-19.0f, 5.0f, -1.0f);
 	meshes["arch0"].get_transform().orientation = vec3(0.0f, half_pi<float>(), 0.0f);
 	meshes["arch0"].set_material(whitePlastic);
 
-	meshes["lamppost0"] = mesh(geometry("models/lamp.obj"));
+	meshes["lamppost0"] = turbo_mesh(geometry("models/lamp.obj"));
 	meshes["lamppost0"].get_transform().position = vec3(25.0f, 0.0f, 18.0f);
 	meshes["lamppost0"].get_transform().scale = vec3(0.05f, 0.05f, 0.05f);
 	meshes["lamppost0"].set_material(whitePlastic);
 
-	meshes["lamppost1"] = mesh(geometry("models/lamp.obj"));
+	meshes["lamppost1"] = turbo_mesh(geometry("models/lamp.obj"));
 	meshes["lamppost1"].get_transform().position = vec3(25.0f, 0.0f, 0.0f);
 	meshes["lamppost1"].get_transform().scale = vec3(0.05f, 0.05f, 0.05f);
 	meshes["lamppost1"].set_material(whitePlastic);
 
-	meshes["wall0"] = mesh(geometry_builder::create_box(vec3(2.0f, 12.0f, 60.0f)));
+	meshes["wall0"] = turbo_mesh(geometry_builder::create_box(vec3(2.0f, 12.0f, 60.0f)));
 	meshes["wall0"].get_transform().position = vec3(-20.0f, 6.0f, 0.0f);
 	meshes["wall0"].set_material(whitePlastic);
 
-	meshes["wall1"] = mesh(geometry_builder::create_box(vec3(60.0f, 12.0f, 2.0f)));
+	meshes["wall1"] = turbo_mesh(geometry_builder::create_box(vec3(60.0f, 12.0f, 2.0f)));
 	meshes["wall1"].get_transform().position = vec3(10.0f, 6.0f, -30.0f);
 	meshes["wall1"].set_material(whitePlasticNoShine);
 
-	meshes["spotlight0"] = mesh(geometry("models/street lamp.obj"));
+	meshes["spotlight0"] = turbo_mesh(geometry("models/street lamp.obj"));
 	meshes["spotlight0"].get_transform().position = vec3(-18.5f, 0.0f, 5.0f);
 	meshes["spotlight0"].get_transform().scale = vec3(0.1f, 0.1f, 0.1f);
 	
-	meshes["flashlight0"] = mesh(geometry("models/Flashlight.obj"));
+	meshes["flashlight0"] = turbo_mesh(geometry("models/Flashlight.obj"));
 	meshes["flashlight0"].get_transform().position = vec3(0.0, 0.0f, 0.25f);
 	meshes["flashlight0"].get_transform().scale = vec3(0.2f, 0.2f, 0.2f);
 	meshes["flashlight0"].get_transform().orientation = vec3(0.0f, pi<float>(), 0.0f);
 
 	// Child to deviceFrameBottom
-	meshes["deviceArmVertical"] = mesh(geometry_builder::create_box(vec3(0.29f, 7.0f, 0.1f)));
+	meshes["deviceArmVertical"] = turbo_mesh(geometry_builder::create_box(vec3(0.29f, 7.0f, 0.1f)));
 	meshes["deviceArmVertical"].get_transform().position = vec3(0.0f, 3.75f, 0.0f);
 	meshes["deviceArmVertical"].set_material(whiteCopper);
 	meshes["deviceArmVertical"].set_parent(&meshes["deviceFrameBottom"]);
 
 	// Child to deviceFrameBottom
-	meshes["deviceArmHorizontal"] = mesh(geometry_builder::create_box(vec3(20.0f, 0.3f, 0.1f)));
+	meshes["deviceArmHorizontal"] = turbo_mesh(geometry_builder::create_box(vec3(20.0f, 0.3f, 0.1f)));
 	meshes["deviceArmHorizontal"].get_transform().position = vec3(0.0f, 3.5f, 0.0f);
 	meshes["deviceArmHorizontal"].set_material(whiteCopper);
 	meshes["deviceArmHorizontal"].set_parent(&meshes["deviceFrameBottom"]);
 	
 	// Child to deviceArmVertical
-	meshes["deviceRing"] = mesh(geometry_builder::create_torus(32, 20, 0.2f, 1.2f));
+	meshes["deviceRing"] = turbo_mesh(geometry_builder::create_torus(32, 20, 0.2f, 1.2f));
 	meshes["deviceRing"].get_transform().position = vec3(0.0f, 0.0f, 0.0f);
 	meshes["deviceRing"].get_transform().orientation = vec3(half_pi<float>(), 0.0f, 0.0f);
 	meshes["deviceRing"].set_material(whiteCopper);
 	meshes["deviceRing"].set_parent(&meshes["deviceArmVertical"]);
 	
 	// Child to deviceFrameBottom
-	meshes["deviceFrameTop"] = mesh(geometry_builder::create_box(vec3(20.0f, 0.5f, 0.5f)));
+	meshes["deviceFrameTop"] = turbo_mesh(geometry_builder::create_box(vec3(20.0f, 0.5f, 0.5f)));
 	meshes["deviceFrameTop"].get_transform().position = vec3(0.0f, 7.5f, 0.0f);
 	meshes["deviceFrameTop"].set_material(whiteCopper);
 	meshes["deviceFrameTop"].set_parent(&meshes["deviceFrameBottom"]);
 
 	// Child to deviceFrameBottom
-	meshes["deviceFrameLeft"] = mesh(geometry_builder::create_box(vec3(0.5f, 8.0f, 0.5f)));
+	meshes["deviceFrameLeft"] = turbo_mesh(geometry_builder::create_box(vec3(0.5f, 8.0f, 0.5f)));
 	meshes["deviceFrameLeft"].get_transform().position = vec3(-10.25f, 3.75f, 0.0f);
 	meshes["deviceFrameLeft"].set_material(whiteCopper);
 	meshes["deviceFrameLeft"].set_parent(&meshes["deviceFrameBottom"]);
 
 	// Child to deviceFrameBottom
-	meshes["deviceFrameRight"] = mesh(geometry_builder::create_box(vec3(0.5f, 8.0f, 0.5f)));
+	meshes["deviceFrameRight"] = turbo_mesh(geometry_builder::create_box(vec3(0.5f, 8.0f, 0.5f)));
 	meshes["deviceFrameRight"].get_transform().position = vec3(10.25f, 3.75f, 0.0f);
 	meshes["deviceFrameRight"].set_material(whiteCopper);
 	meshes["deviceFrameRight"].set_parent(&meshes["deviceFrameBottom"]);
 
 	// Top dog of the hierarchy tree
-	meshes["deviceFrameBottom"] = mesh(geometry_builder::create_box(vec3(20.0f, 0.5f, 0.5f)));
+	meshes["deviceFrameBottom"] = turbo_mesh(geometry_builder::create_box(vec3(20.0f, 0.5f, 0.5f)));
 	meshes["deviceFrameBottom"].get_transform().position = vec3(0.0f, 0.25f, -24.0f);
 	meshes["deviceFrameBottom"].set_material(whiteCopper);
 
@@ -414,13 +472,13 @@ bool render()
 	auto V = shadows[1].get_view();
 	// Render meshes
 	for (auto &e : meshes) {
-		auto m = e.second;
+		turbo_mesh m = e.second;
 		// Create MVP matrix
 		auto M = m.get_hierarchical_transform_matrix();
 		// *********************************
 		// View matrix taken from shadow map
 		// *********************************
-		auto MVP = LightProjectionMat * V * M;
+		mat4 MVP = LightProjectionMat * V * M;
 		// Set MVP matrix uniform
 		glUniformMatrix4fv(shadow_eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(MVP));
 		// Render mesh
@@ -445,7 +503,7 @@ bool render()
 	mat4 M;
 	for (auto &e : meshes)
 	{
-		mesh m = e.second;
+		turbo_mesh m = e.second;
 
 		renderer::bind(eff);
 
