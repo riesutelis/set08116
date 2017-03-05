@@ -200,18 +200,18 @@ bool load_content()
 	// Load normal maps ---------------------------------------------------------------------------------------------------------------------------------------
 	normal_maps["wall0"] = texture("textures/CeramicBrick_normalmap_M.jpg");
 	normal_maps["deviceFrameBottom"] = texture("textures/Copper_A_normalmap_M.png");
-	normal_maps["deviceFrameRight"] = texture("textures/Copper_A_normalmap_M.png");
-	normal_maps["deviceFrameLeft"] = texture("textures/Copper_A_normalmap_M.png");
-	normal_maps["deviceFrameTop"] = texture("textures/Copper_A_normalmap_M.png");
-	normal_maps["deviceArmHorizontal"] = texture("textures/Copper_A_normalmap_M.png");
-	normal_maps["deviceArmVertical"] = texture("textures/Copper_A_normalmap_M.png");
-	normal_maps["deviceRing"] = texture("textures/Copper_A_normalmap_M.png");
+	normal_maps["deviceFrameRight"] = normal_maps["deviceFrameBottom"];
+	normal_maps["deviceFrameLeft"] = normal_maps["deviceFrameBottom"];
+	normal_maps["deviceFrameTop"] = normal_maps["deviceFrameBottom"];
+	normal_maps["deviceArmHorizontal"] = normal_maps["deviceFrameBottom"];
+	normal_maps["deviceArmVertical"] = normal_maps["deviceFrameBottom"];
+	normal_maps["deviceRing"] = normal_maps["deviceFrameBottom"];
 	//---------------------------------------------------------------------------------------------------------------------------------------------------------
 
 
 	// Load meshes #############################################################################################################################################
 
-	//meshes["box"] = mesh(geometry_builder::create_box(vec3(5.0f, 5.0f, 5.0f)));
+	//meshes["box"] = mesh(geometry_builder::create_box(vec3(5.0f, 5.0f, 5.0f)));				// Box for various debuging purposes
 	//meshes["box"].get_transform().position = vec3(8.0f, 5.0f, 2.0f);
 	//meshes["box"].set_material(whiteCopper);
 	//normal_maps["box"] = texture("textures/brick_normalmap.jpg");
@@ -306,17 +306,17 @@ bool load_content()
 	texs["floor"] = texture("textures/Asphalt.jpg", true, true);
 	texs["arch0"] = texture("textures/concrete.jpg", true, true);
 	texs["lamppost0"] = texture("textures/st-metal.jpg", true, true);
-	texs["lamppost1"] = texture("textures/st-metal.jpg", true, true);
+	texs["lamppost1"] = texs["lamppost0"];
 	texs["wall0"] = texture("textures/CeramicBrick_albedo_M.jpg", true, true);
 	texs["wall1"] = texture("textures/map-8.jpg", true, true);
-	texs["spotlight0"] = texture("textures/st-metal.jpg", true, true);
+	texs["spotlight0"] = texs["lamppost0"];
 	texs["deviceFrameBottom"] = texture("textures/Copper_A_albedo_M.png", true, true);
-	texs["deviceFrameRight"] = texture("textures/Copper_A_albedo_M.png", true, true);
-	texs["deviceFrameLeft"] = texture("textures/Copper_A_albedo_M.png", true, true);
-	texs["deviceFrameTop"] = texture("textures/Copper_A_albedo_M.png", true, true);
-	texs["deviceArmHorizontal"] = texture("textures/Copper_A_albedo_M.png", true, true);
-	texs["deviceArmVertical"] = texture("textures/Copper_A_albedo_M.png", true, true);
-	texs["deviceRing"] = texture("textures/Copper_A_albedo_M.png", true, true);
+	texs["deviceFrameRight"] = texs["deviceFrameBottom"];
+	texs["deviceFrameLeft"] = texs["deviceFrameBottom"];
+	texs["deviceFrameTop"] = texs["deviceFrameBottom"];
+	texs["deviceArmHorizontal"] = texs["deviceFrameBottom"];
+	texs["deviceArmVertical"] = texs["deviceFrameBottom"];
+	texs["deviceRing"] = texs["deviceFrameBottom"];
 
 	//----------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -325,7 +325,7 @@ bool load_content()
 
 	// Load lights ############################################################################################################################################
 	light = directional_light(vec4(0.003f, 0.003f, 0.003f, 1.0f), vec4(0.2f, 0.08f, 0.06f, 1.0f), normalize(vec3(0.6f, -1.0f, 0.3f)));		// evening
-//	light = directional_light(vec4(0.0f, 0.0f, 0.0f, 1.0f), vec4(0.0f, 0.0f, 0.0f, 1.0f), normalize(vec3(0.6f, -1.0f, 0.3f)));				// No directional
+//	light = directional_light(vec4(0.0f, 0.0f, 0.0f, 1.0f), vec4(0.0f, 0.0f, 0.0f, 1.0f), normalize(vec3(0.6f, -1.0f, 0.3f)));				// No directional for debugging
 //	light = directional_light(vec4(1.0f, 1.0f, 1.0f, 1.0f), vec4(0.0f, 0.0f, 0.0f, 1.0f), normalize(vec3(0.6f, -1.0f, 0.3f)));				// full ambient for debugging
 
 	points.push_back(point_light(vec4(1.0f, 0.9f, 0.63f, 1.0f), vec3(25.0f, 11.5f, 18.0f), 0.0f, 0.01f, 0.01f));							// Lamppost0
@@ -349,22 +349,23 @@ bool load_content()
 	vector<string> frag_shaders{ "shaders/top_shader.frag", "shaders/directional.frag", "shaders/spot.frag", "shaders/point.frag", "shaders/shadow_index.frag" };
 	eff.add_shader(frag_shaders, GL_FRAGMENT_SHADER);
 
-	shadow_eff.add_shader("shaders/shadow_spot.vert", GL_VERTEX_SHADER);
-	shadow_eff.add_shader("shaders/shadow_spot.frag", GL_FRAGMENT_SHADER);
+	shadow_eff.add_shader("shaders/shadow_depth.vert", GL_VERTEX_SHADER);
 
 	// Build effect
 	eff.build();
 	shadow_eff.build();
 
-	// Set camera properties
+	// Set target camera
 	target_cam.set_position(vec3(0.0f, 1.0f, 50.0f));
 	target_cam.set_target(vec3(0.0f, 0.0f, 0.0f));
 	target_cam.set_projection(quarter_pi<float>() * 1.3f, renderer::get_screen_aspect(), 0.1f, 1000.0f);
 
+	// Set free camera
 	free_cam.set_position(vec3(30.0f, 1.0f, 50.0f));
 	free_cam.set_target(vec3(0.0f, 0.0f, 0.0f));
 	free_cam.set_projection(quarter_pi<float>() * 1.3f, renderer::get_screen_aspect(), 0.1f, 1000.0f);
 
+	// Select starting camera
 	cam_select = free0;
 	return true;
 }
@@ -373,6 +374,7 @@ bool load_content()
 bool update(float delta_time)
 {
 
+	// Assigns positions and directions of the lights to shadows
 	for (int i = 0; i < shadows.size(); i++)
 	{
 		shadows[i].light_position = spots[i].get_position();
@@ -447,7 +449,7 @@ bool update(float delta_time)
 	}
 
 
-
+	// Display frames per second in the console
 	cout << "FPS: " << 1.0f / delta_time << endl;
 	return true;
 }
@@ -467,31 +469,24 @@ bool render()
 	
 	mat4 LightProjectionMat = perspective<float>(90.0f, renderer::get_screen_aspect(), 0.1f, 1000.f);
 
-	// Bind shader
+	// Bind shadow shader
 	renderer::bind(shadow_eff);
 	auto V = shadows[1].get_view();
-	// Render meshes
+
 	for (auto &e : meshes) {
 		turbo_mesh m = e.second;
 		// Create MVP matrix
 		auto M = m.get_hierarchical_transform_matrix();
-		// *********************************
-		// View matrix taken from shadow map
-		// *********************************
 		mat4 MVP = LightProjectionMat * V * M;
-		// Set MVP matrix uniform
 		glUniformMatrix4fv(shadow_eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(MVP));
-		// Render mesh
 		renderer::render(m);
 	}
-	// *********************************
+
 	// Set render target back to the screen
 	renderer::set_render_target();
-	// Set face cull mode to back
 	glCullFace(GL_BACK);
-	// *********************************
 
-	// Bind shader
+	// Bind main shader
 	renderer::bind(eff);
 
 
@@ -507,15 +502,13 @@ bool render()
 
 		renderer::bind(eff);
 
-	//	M = m.get_transform().get_transform_matrix();
-
 		M = m.get_hierarchical_transform_matrix();
 
 
 
 		auto MVP = calculatePV() * M;
-	//	auto MVP = LightProjectionMat * shadows[1].get_view() * M;
 		
+		// Pass uniforms to shaders
 		glUniformMatrix4fv(eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(MVP));
 		glUniformMatrix4fv(eff.get_uniform_location("M"), 1, GL_FALSE, value_ptr(M));
 		glUniformMatrix3fv(eff.get_uniform_location("N"), 1, GL_FALSE, value_ptr(m.get_hierarchical_normal_matrix()));
