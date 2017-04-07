@@ -81,6 +81,10 @@ directional_light light;
 vector<point_light> points;
 vector<spot_light> spots;
 
+pair<mesh, mesh> portals;
+frame_buffer first_portal_pass;
+
+
 
 default_random_engine ran;
 // Time accumulator
@@ -115,6 +119,25 @@ mat4 calculatePV()
 		break;
 	case target0:
 		return target_cam.get_projection() * target_cam.get_view();
+		break;
+	default:
+		cout << "No case for camera enum selected (calculatePV)" << endl;
+		break;
+	}
+	return mat4();
+}
+
+
+// Calculates portal PV part of the MVP matrix depending on the camera curently selected
+mat4 calculatePortalPV(mat4 portalTransformMatrix)
+{
+	switch (cam_select)
+	{
+	case free0:
+		return free_cam.get_projection() * free_cam.get_view() * portalTransformMatrix;
+		break;
+	case target0:
+		return target_cam.get_projection() * target_cam.get_view() * portalTransformMatrix;
 		break;
 	default:
 		cout << "No case for camera enum selected (calculatePV)" << endl;
@@ -190,6 +213,28 @@ void moveFreeCamera(float delta_time)
 
 bool load_content()
 {
+	// setting up the portals
+	portals.first = mesh(geometry_builder::create_disk(40, vec2(4.0f, 2.5f)));
+	portals.first.get_transform().position = vec3(-10.0, 4.0, 10.0);
+	//portals.first.get_transform().orientation = vec3(quarter_pi<float>() * 3.5, 0.0, half_pi<float>());
+	portals.second = mesh(geometry_builder::create_disk(40, vec2(4.0f, 2.5f)));
+	portals.second.get_transform().position = vec3(15.0, 4.0, -15.0);
+	//portals.second.get_transform().orientation = vec3(half_pi<float>(), 0.0, half_pi<float>());
+
+
+
+
+	
+	// debug stuff
+	meshes["portal1"] = turbo_mesh(geometry_builder::create_disk(40, vec2(6.0f, 3.0f)));
+	meshes["portal1"].get_transform().position = vec3(-10.0, 4.0, 10.0);
+	meshes["portal1"].get_transform().orientation = vec3(half_pi<float>(), 0.0, half_pi<float>());
+	meshes["portal2"] = turbo_mesh(geometry_builder::create_disk(40, vec2(6.0f, 3.0f)));
+	meshes["portal2"].get_transform().position = vec3(15.0, 4.0, -15.0);
+	meshes["portal2"].get_transform().orientation = vec3(half_pi<float>(), 0.0, half_pi<float>());
+
+	
+
 
 	// Materials
 	material whitePlastic = material(black, white, white, 25.0f);
@@ -326,7 +371,7 @@ bool load_content()
 	// Load lights ############################################################################################################################################
 	light = directional_light(vec4(0.003f, 0.003f, 0.003f, 1.0f), vec4(0.2f, 0.08f, 0.06f, 1.0f), normalize(vec3(0.6f, -1.0f, 0.3f)));		// evening
 //	light = directional_light(vec4(0.0f, 0.0f, 0.0f, 1.0f), vec4(0.0f, 0.0f, 0.0f, 1.0f), normalize(vec3(0.6f, -1.0f, 0.3f)));				// No directional for debugging
-//	light = directional_light(vec4(1.0f, 1.0f, 1.0f, 1.0f), vec4(0.0f, 0.0f, 0.0f, 1.0f), normalize(vec3(0.6f, -1.0f, 0.3f)));				// full ambient for debugging
+	light = directional_light(vec4(1.0f, 1.0f, 1.0f, 1.0f), vec4(0.0f, 0.0f, 0.0f, 1.0f), normalize(vec3(0.6f, -1.0f, 0.3f)));				// full ambient for debugging
 
 	points.push_back(point_light(vec4(1.0f, 0.9f, 0.63f, 1.0f), vec3(25.0f, 11.5f, 18.0f), 0.0f, 0.01f, 0.01f));							// Lamppost0
 	points.push_back(point_light(vec4(1.0f, 0.9f, 0.63f, 1.0f), vec3(25.0f, 11.5f, 0.0f), 0.0f, 0.01f, 0.01f));								// Lamppost1
@@ -360,9 +405,12 @@ bool load_content()
 	target_cam.set_target(vec3(0.0f, 0.0f, 0.0f));
 	target_cam.set_projection(quarter_pi<float>() * 1.3f, renderer::get_screen_aspect(), 0.1f, 1000.0f);
 
+
 	// Set free camera
 	free_cam.set_position(vec3(30.0f, 1.0f, 50.0f));
+//	free_cam.set_position(vec3(10.0f, 1.0f, 20.0f));
 	free_cam.set_target(vec3(0.0f, 0.0f, 0.0f));
+//	free_cam.set_target(vec3(-10.0, 4.0, 10.0));
 	free_cam.set_projection(quarter_pi<float>() * 1.3f, renderer::get_screen_aspect(), 0.1f, 1000.0f);
 
 	// Select starting camera
@@ -483,7 +531,7 @@ bool render()
 	}
 
 	// Set render target back to the screen
-	renderer::set_render_target();
+//	renderer::set_render_target();
 	glCullFace(GL_BACK);
 
 	// Bind main shader
@@ -494,8 +542,120 @@ bool render()
 
 
 
-	// Render the scene
+
+
+
+
+
+	// Render image through portal ////////////////////////////////////////////////////////////////////////////////////////////
+	renderer::set_render_target(first_portal_pass);
 	mat4 M;
+	for (auto &e : meshes)
+	{
+		turbo_mesh m = e.second;
+
+		renderer::bind(eff);
+
+		M = m.get_hierarchical_transform_matrix();
+
+
+
+		auto MVP = calculatePortalPV(inverse(portals.first.get_transform().get_transform_matrix()) * portals.second.get_transform().get_transform_matrix()) * M;
+		//auto MVP = calculatePV() * M;
+
+		// Pass uniforms to shaders
+		glUniformMatrix4fv(eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(MVP));
+		glUniformMatrix4fv(eff.get_uniform_location("M"), 1, GL_FALSE, value_ptr(M));
+		glUniformMatrix3fv(eff.get_uniform_location("N"), 1, GL_FALSE, value_ptr(m.get_hierarchical_normal_matrix()));
+		mat4 lMVP = LightProjectionMat * shadows[1].get_view() * M;
+		glUniformMatrix4fv(eff.get_uniform_location("lMVP"), 1, GL_FALSE, value_ptr(lMVP));
+		renderer::bind(m.get_material(), "mat");
+		renderer::bind(light, "light");
+		renderer::bind(points, "points");
+		renderer::bind(spots, "spots");
+
+		// If no texture assigned, assign default
+		if (texs[e.first].get_id() != 0)
+			renderer::bind(texs[e.first], 0);
+		else
+			renderer::bind(texs["check_1"], 0);
+
+		// If no normal map assigned tell shader to not do normal mapping
+		if (normal_maps[e.first].get_id() != 0)
+		{
+			renderer::bind(normal_maps[e.first], 2);
+			glUniform1i(eff.get_uniform_location("normal_map"), 2);
+			glUniform1f(eff.get_uniform_location("map_norms"), 1.0);
+		}
+		else
+			glUniform1f(eff.get_uniform_location("map_norms"), -1.0);
+
+		glUniform1i(eff.get_uniform_location("pn"), points.size());
+		glUniform1i(eff.get_uniform_location("sn"), spots.size());
+		glUniform1i(eff.get_uniform_location("tex"), 0);
+		glUniform3fv(eff.get_uniform_location("eye_pos"), 1, value_ptr(eye_pos()));
+		renderer::bind(shadows[1].buffer->get_depth(), 1);
+		glUniform1i(eff.get_uniform_location("shadow_map"), 1);
+		renderer::render(m);
+	}
+
+
+	/*
+
+
+	glClear(GL_DEPTH_BUFFER_BIT);
+	glEnable(GL_STENCIL_TEST);
+
+	//glStencilFunc(GL_ALWAYS, 1, 0xFF);
+	//glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+	//glStencilMask(0xFF);
+	glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+	glDepthMask(GL_FALSE);
+	glStencilFunc(GL_ALWAYS, 1, 0xFF);
+	glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+
+	glStencilMask(0xFF);
+	glClear(GL_STENCIL_BUFFER_BIT);
+	//renderer::render(portals.first);
+//	vector<vec3> vecs = portals.first.get_geometry().get_array_object();
+
+	glDrawArrays(GL_TRIANGLES, meshes["portal1"].get_geometry().get_array_object(), portals.first.get_geometry().get_vertex_count());	// 40?
+
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+	glDepthMask(GL_TRUE);
+	glStencilMask(0x00);
+
+
+
+	glStencilFunc(GL_EQUAL, 1, 0xFF);
+
+
+	
+
+
+
+
+
+	/////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+
+
+
+
+
+
+
+
+
+	
+	
+
+	// Render the scene
+	renderer::set_render_target();
+//	mat4 M;
 	for (auto &e : meshes)
 	{
 		turbo_mesh m = e.second;
@@ -543,8 +703,12 @@ bool render()
 		glUniform1i(eff.get_uniform_location("shadow_map"), 1);
 		renderer::render(m);
 	}
+	
+	
 
 
+	glDisable(GL_STENCIL_TEST);
+	*/
 	return true;
 }
 
