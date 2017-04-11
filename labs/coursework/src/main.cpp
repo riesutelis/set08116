@@ -83,6 +83,7 @@ vector<spot_light> spots;
 
 pair<mesh, mesh> portals;
 frame_buffer first_portal_pass;
+map<string, turbo_mesh> meshes1;
 
 
 
@@ -105,6 +106,8 @@ bool initialise()
 	glfwSetInputMode(renderer::get_window(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 	// Capture initial mouse position
 	glfwGetCursorPos(renderer::get_window(), &cursor_x, &cursor_y);
+
+	first_portal_pass = frame_buffer(renderer::get_screen_width(), renderer::get_screen_height());
 	return true;
 }
 
@@ -223,15 +226,15 @@ bool load_content()
 
 
 
-
+	
 	
 	// debug stuff
-	meshes["portal1"] = turbo_mesh(geometry_builder::create_disk(40, vec2(6.0f, 3.0f)));
-	meshes["portal1"].get_transform().position = vec3(-10.0, 4.0, 10.0);
-	meshes["portal1"].get_transform().orientation = vec3(half_pi<float>(), 0.0, half_pi<float>());
-	meshes["portal2"] = turbo_mesh(geometry_builder::create_disk(40, vec2(6.0f, 3.0f)));
-	meshes["portal2"].get_transform().position = vec3(15.0, 4.0, -15.0);
-	meshes["portal2"].get_transform().orientation = vec3(half_pi<float>(), 0.0, half_pi<float>());
+	meshes1["portal1"] = turbo_mesh(geometry_builder::create_disk(40, vec2(6.0f, 3.0f)));
+	meshes1["portal1"].get_transform().position = vec3(-10.0, 4.0, 10.0);
+	meshes1["portal1"].get_transform().orientation = vec3(half_pi<float>(), 0.0, half_pi<float>());
+	meshes1["portal2"] = turbo_mesh(geometry_builder::create_disk(40, vec2(6.0f, 3.0f)));
+	meshes1["portal2"].get_transform().position = vec3(15.0, 4.0, -15.0);
+	meshes1["portal2"].get_transform().orientation = vec3(half_pi<float>(), 0.0, half_pi<float>());
 
 	
 
@@ -512,15 +515,15 @@ bool render()
 	glClear(GL_DEPTH_BUFFER_BIT);
 	// Set face cull mode to front
 	glCullFace(GL_FRONT);
-	// *********************************
 
-	
+	// Create a projection matrix for the poin of view of the light
 	mat4 LightProjectionMat = perspective<float>(90.0f, renderer::get_screen_aspect(), 0.1f, 1000.f);
 
 	// Bind shadow shader
 	renderer::bind(shadow_eff);
 	auto V = shadows[1].get_view();
 
+	// Render the meshes
 	for (auto &e : meshes) {
 		turbo_mesh m = e.second;
 		// Create MVP matrix
@@ -546,9 +549,9 @@ bool render()
 
 
 
-
 	// Render image through portal ////////////////////////////////////////////////////////////////////////////////////////////
-	renderer::set_render_target(first_portal_pass);
+//	renderer::set_render_target(first_portal_pass);
+	renderer::set_render_target();
 	mat4 M;
 	for (auto &e : meshes)
 	{
@@ -559,9 +562,8 @@ bool render()
 		M = m.get_hierarchical_transform_matrix();
 
 
-
+		// Calculate MVP using M that is transformed to be seen through the portal
 		auto MVP = calculatePortalPV(inverse(portals.first.get_transform().get_transform_matrix()) * portals.second.get_transform().get_transform_matrix()) * M;
-		//auto MVP = calculatePV() * M;
 
 		// Pass uniforms to shaders
 		glUniformMatrix4fv(eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(MVP));
@@ -600,34 +602,42 @@ bool render()
 	}
 
 
-	/*
+
+	// Stencil stuff //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
 	glClear(GL_DEPTH_BUFFER_BIT);
 	glEnable(GL_STENCIL_TEST);
 
-	//glStencilFunc(GL_ALWAYS, 1, 0xFF);
-	//glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
-	//glStencilMask(0xFF);
+	// Disable colour and depth masks
 	glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
 	glDepthMask(GL_FALSE);
+
+	// Put 1 into stencil buffer where drawn
 	glStencilFunc(GL_ALWAYS, 1, 0xFF);
 	glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
 
+	// Enables writing to all bits of the stencil buffer
 	glStencilMask(0xFF);
+
+	// Clears the stencil buffer
 	glClear(GL_STENCIL_BUFFER_BIT);
-	//renderer::render(portals.first);
-//	vector<vec3> vecs = portals.first.get_geometry().get_array_object();
 
-	glDrawArrays(GL_TRIANGLES, meshes["portal1"].get_geometry().get_array_object(), portals.first.get_geometry().get_vertex_count());	// 40?
+	// Binds shadow_eff because it only calculates positions for objects
+	renderer::bind(shadow_eff);
+	M = meshes1["portal1"].get_transform().get_transform_matrix();;
+	mat4 MVP = calculatePV() * M;
+	glUniformMatrix4fv(shadow_eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(MVP));
+	renderer::render(meshes1["portal1"]);
 
+	// Set colour and depth writing on
 	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 	glDepthMask(GL_TRUE);
+	// Disable stencil buffer editing on all bits
 	glStencilMask(0x00);
 
-
-
-	glStencilFunc(GL_EQUAL, 1, 0xFF);
+	// Draw where stencil value is 1
+	glStencilFunc(GL_EQUAL, 0, 0xFF);
 
 
 	
@@ -636,7 +646,7 @@ bool render()
 
 
 
-	/////////////////////////////////////////////////////////////////////////////////////////////////////
+	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
 
@@ -645,7 +655,7 @@ bool render()
 
 
 
-
+	
 
 
 
@@ -655,18 +665,16 @@ bool render()
 
 	// Render the scene
 	renderer::set_render_target();
-//	mat4 M;
+
+	// Calculate PV component of the MVP
+	mat4 PV = calculatePV();
+
 	for (auto &e : meshes)
 	{
 		turbo_mesh m = e.second;
-
 		renderer::bind(eff);
-
-		M = m.get_hierarchical_transform_matrix();
-
-
-
-		auto MVP = calculatePV() * M;
+		mat4 M = m.get_hierarchical_transform_matrix();
+		auto MVP = PV * M;
 		
 		// Pass uniforms to shaders
 		glUniformMatrix4fv(eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(MVP));
@@ -678,7 +686,7 @@ bool render()
 		renderer::bind(light, "light");
 		renderer::bind(points, "points");
 		renderer::bind(spots, "spots");
-
+		
 		// If no texture assigned, assign default
 		if (texs[e.first].get_id() != 0)
 			renderer::bind(texs[e.first], 0);
@@ -708,7 +716,7 @@ bool render()
 
 
 	glDisable(GL_STENCIL_TEST);
-	*/
+	
 	return true;
 }
 
