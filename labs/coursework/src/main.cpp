@@ -63,6 +63,7 @@ public:
 
 geometry geom;
 effect eff;
+effect portal_eff;
 effect shadow_eff;
 map<string, turbo_mesh> meshes;
 map<string, texture> texs;
@@ -226,10 +227,10 @@ void draw_stencil_mask(mesh m, int layer)
 
 
 // Renders the meshes stored in the 'meshes' map using the main effect 'eff'
-void render_scene(mat4 offsetMatrix, mat4 lightProjectionMat)
+void render_scene(mat4 lightProjectionMat)
 {
 	mat4 M;
-	mat4 PV = calculatePV() * offsetMatrix;
+	mat4 PV = calculatePV();
 	renderer::bind(eff);
 	for (auto &e : meshes)
 	{
@@ -272,6 +273,63 @@ void render_scene(mat4 offsetMatrix, mat4 lightProjectionMat)
 		glUniform3fv(eff.get_uniform_location("eye_pos"), 1, value_ptr(eye_pos()));
 		renderer::bind(shadows[1].buffer->get_depth(), 1);
 		glUniform1i(eff.get_uniform_location("shadow_map"), 1);
+		renderer::render(m);
+	}
+}
+
+
+// Renders the meshes stored in the 'meshes' map using the main effect 'eff'
+void render_portal(mat4 offsetMatrix, mat4 lightProjectionMat, vec3 portal_pos, vec3 portal_normal)
+{
+	mat4 M;
+	mat4 PV = calculatePV() * offsetMatrix;
+	renderer::bind(portal_eff);
+	for (auto &e : meshes)
+	{
+		turbo_mesh m = e.second;
+		M = m.get_hierarchical_transform_matrix();
+
+		// Calculate MVP using M that is transformed to be seen through the portal
+		auto MVP = PV * M;
+
+		// Pass uniforms to shaders
+		glUniformMatrix4fv(portal_eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(MVP));
+		glUniformMatrix4fv(portal_eff.get_uniform_location("M"), 1, GL_FALSE, value_ptr(M));
+		glUniformMatrix3fv(portal_eff.get_uniform_location("N"), 1, GL_FALSE, value_ptr(m.get_hierarchical_normal_matrix()));
+		mat4 lMVP = lightProjectionMat * shadows[1].get_view() * M;
+		glUniformMatrix4fv(portal_eff.get_uniform_location("lMVP"), 1, GL_FALSE, value_ptr(lMVP));
+		renderer::bind(m.get_material(), "mat");
+		renderer::bind(light, "light");
+		renderer::bind(points, "points");
+		renderer::bind(spots, "spots");
+
+		// If no texture assigned, assign default
+		if (texs[e.first].get_id() != 0)
+			renderer::bind(texs[e.first], 0);
+		else
+			renderer::bind(texs["check_1"], 0);
+
+		// If no normal map assigned tell shader to not do normal mapping
+		if (normal_maps[e.first].get_id() != 0)
+		{
+			renderer::bind(normal_maps[e.first], 2);
+			glUniform1i(portal_eff.get_uniform_location("normal_map"), 2);
+			glUniform1f(portal_eff.get_uniform_location("map_norms"), 1.0);
+		}
+		else
+			glUniform1f(portal_eff.get_uniform_location("map_norms"), -1.0);
+
+		glUniform1i(portal_eff.get_uniform_location("pn"), points.size());
+		glUniform1i(portal_eff.get_uniform_location("sn"), spots.size());
+		glUniform1i(portal_eff.get_uniform_location("tex"), 0);
+		glUniform3fv(portal_eff.get_uniform_location("eye_pos"), 1, value_ptr(eye_pos()));
+		renderer::bind(shadows[1].buffer->get_depth(), 1);
+		glUniform1i(portal_eff.get_uniform_location("shadow_map"), 1);
+	//	glUniform3fv(portal_eff.get_uniform_location("portal_pos"), 1, value_ptr(vec3(PV * vec4(portal_pos, 1.0))));
+	//	glUniform3fv(portal_eff.get_uniform_location("portal_normal"), 1, value_ptr(vec3(PV * vec4(portal_normal, 1.0))));
+		glUniform3fv(portal_eff.get_uniform_location("portal_pos"), 1, value_ptr(vec3(PV * portals.first.get_transform().get_transform_matrix() * vec4(portal_pos, 1.0))));
+		glUniform3fv(portal_eff.get_uniform_location("portal_normal"), 1, value_ptr(vec3(PV * portals.first.get_transform().get_transform_matrix() * vec4(portal_normal, 1.0))));
+
 		renderer::render(m);
 	}
 }
@@ -463,18 +521,23 @@ bool load_content()
 	vector<string> frag_shaders{ "shaders/top_shader.frag", "shaders/directional.frag", "shaders/spot.frag", "shaders/point.frag", "shaders/shadow_index.frag" };
 	eff.add_shader(frag_shaders, GL_FRAGMENT_SHADER);
 
+	portal_eff.add_shader("shaders/vert_shader.vert", GL_VERTEX_SHADER);
+	vector<string> portal_frag_shaders{ "shaders/portal_top_shader.frag", "shaders/directional.frag", "shaders/spot.frag", "shaders/point.frag", "shaders/shadow_index.frag" };
+	portal_eff.add_shader(portal_frag_shaders, GL_FRAGMENT_SHADER);
+
 	shadow_eff.add_shader("shaders/shadow_depth.vert", GL_VERTEX_SHADER);
 
 	// Build effect
 	eff.build();
 	shadow_eff.build();
-
+	portal_eff.build();
+	
 	// Set target camera
 	target_cam.set_position(vec3(0.0f, 1.0f, 50.0f));
 	target_cam.set_target(vec3(0.0f, 0.0f, 0.0f));
 	target_cam.set_projection(quarter_pi<float>() * 1.3f, renderer::get_screen_aspect(), 0.1f, 1000.0f);
 
-
+	
 	// Set free camera
 	free_cam.set_position(vec3(30.0f, 1.0f, 50.0f));
 //	free_cam.set_position(vec3(10.0f, 1.0f, 20.0f));
@@ -607,7 +670,7 @@ bool render()
 
 	// Render the scene 
 	renderer::set_render_target();
-	render_scene(mat4(1.0f), lightProjectionMat);
+	render_scene(lightProjectionMat);
 
 
 
@@ -632,11 +695,13 @@ bool render()
 	renderer::set_render_target();
 	// Render image through first portal
 	glStencilFunc(GL_EQUAL, 1, 0xFF);
-	render_scene(inverse(portals.second.get_transform().get_transform_matrix()) * portals.first.get_transform().get_transform_matrix(), lightProjectionMat);
+	mat4 offset = inverse(portals.second.get_transform().get_transform_matrix()) * portals.first.get_transform().get_transform_matrix();
+	render_portal(offset, lightProjectionMat, portals.first.get_transform().position, vec3(0.0f, 1.0f, 0.0f) * meshes1["portal1"].get_transform().orientation);
 
 	// Render image through second portal
 	glStencilFunc(GL_EQUAL, 2, 0xFF);
-	render_scene(inverse(portals.first.get_transform().get_transform_matrix()) * portals.second.get_transform().get_transform_matrix(), lightProjectionMat);
+	offset = inverse(portals.first.get_transform().get_transform_matrix()) * portals.second.get_transform().get_transform_matrix();
+	render_portal(offset, lightProjectionMat, portals.second.get_transform().position, vec3(0.0f, 1.0f, 0.0f) * meshes1["portal2"].get_transform().orientation);
 
 
 	// Disable stencil testing
