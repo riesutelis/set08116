@@ -131,26 +131,7 @@ mat4 calculatePV()
 }
 
 
-// Calculates portal PV part of the MVP matrix depending on the camera curently selected
-mat4 calculatePortalPV(mat4 portalTransformMatrix)
-{
-	switch (cam_select)
-	{
-	case free0:
-		return free_cam.get_projection() * free_cam.get_view() * portalTransformMatrix;
-		break;
-	case target0:
-		return target_cam.get_projection() * target_cam.get_view() * portalTransformMatrix;
-		break;
-	default:
-		cout << "No case for camera enum selected (calculatePV)" << endl;
-		break;
-	}
-	return mat4();
-}
-
-
-
+// Returns eye position based on selected camera
 vec3 eye_pos()
 {
 	switch (cam_select)
@@ -167,7 +148,6 @@ vec3 eye_pos()
 	}
 	return vec3();
 }
-
 
 
 // Use keyboard to move the camera - WSAD for xz and space, left control for y, mouse to rotate
@@ -212,45 +192,88 @@ void moveFreeCamera(float delta_time)
 }
 
 
-
-
 // Draws a stencil mask for a single mesh
-void draw_stencil_mask(mesh m)
+void draw_stencil_mask(mesh m, int layer)
 {
-	glClear(GL_DEPTH_BUFFER_BIT);
+	// Enables stencil testing
 	glEnable(GL_STENCIL_TEST);
-
-	// Disable colour and depth masks
+	// Disable colour mask
 	glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-	glDepthMask(GL_FALSE);
 
-	// Put 1 into stencil buffer where drawn
-	glStencilFunc(GL_ALWAYS, 1, 0xFF);
+	// Put layer into stencil buffer where depth test passes
+	glStencilFunc(GL_ALWAYS, layer, 0xFF);
 	glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
 
 	// Enables writing to all bits of the stencil buffer
 	glStencilMask(0xFF);
 
-	// Clears the stencil buffer
-	glClear(GL_STENCIL_BUFFER_BIT);
-
-	// Binds shadow_eff because it only calculates positions for objects
+	// Binds shadow_eff because it only calculates position information for objects
 	renderer::bind(shadow_eff);
 	mat4 M = m.get_transform().get_transform_matrix();;
 	mat4 MVP = calculatePV() * M;
 	glUniformMatrix4fv(shadow_eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(MVP));
+	// Draw to stencil buffer regardless of facing
 	glDisable(GL_CULL_FACE);
 	renderer::render(m);
 	glEnable(GL_CULL_FACE);
 
-	// Set colour and depth writing on
+	// Set colour writing on
 	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-	glDepthMask(GL_TRUE);
+
 	// Disable stencil buffer editing on all bits
 	glStencilMask(0x00);
+}
 
-	// Draw where stencil value is 1
-	glStencilFunc(GL_EQUAL, 1, 0xFF);
+
+// Renders the meshes stored in the 'meshes' map using the main effect 'eff'
+void render_scene(mat4 offsetMatrix, mat4 lightProjectionMat)
+{
+	mat4 M;
+	mat4 PV = calculatePV() * offsetMatrix;
+	renderer::bind(eff);
+	for (auto &e : meshes)
+	{
+		turbo_mesh m = e.second;
+		M = m.get_hierarchical_transform_matrix();
+
+		// Calculate MVP using M that is transformed to be seen through the portal
+		auto MVP = PV * M;
+
+		// Pass uniforms to shaders
+		glUniformMatrix4fv(eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(MVP));
+		glUniformMatrix4fv(eff.get_uniform_location("M"), 1, GL_FALSE, value_ptr(M));
+		glUniformMatrix3fv(eff.get_uniform_location("N"), 1, GL_FALSE, value_ptr(m.get_hierarchical_normal_matrix()));
+		mat4 lMVP = lightProjectionMat * shadows[1].get_view() * M;
+		glUniformMatrix4fv(eff.get_uniform_location("lMVP"), 1, GL_FALSE, value_ptr(lMVP));
+		renderer::bind(m.get_material(), "mat");
+		renderer::bind(light, "light");
+		renderer::bind(points, "points");
+		renderer::bind(spots, "spots");
+
+		// If no texture assigned, assign default
+		if (texs[e.first].get_id() != 0)
+			renderer::bind(texs[e.first], 0);
+		else
+			renderer::bind(texs["check_1"], 0);
+
+		// If no normal map assigned tell shader to not do normal mapping
+		if (normal_maps[e.first].get_id() != 0)
+		{
+			renderer::bind(normal_maps[e.first], 2);
+			glUniform1i(eff.get_uniform_location("normal_map"), 2);
+			glUniform1f(eff.get_uniform_location("map_norms"), 1.0);
+		}
+		else
+			glUniform1f(eff.get_uniform_location("map_norms"), -1.0);
+
+		glUniform1i(eff.get_uniform_location("pn"), points.size());
+		glUniform1i(eff.get_uniform_location("sn"), spots.size());
+		glUniform1i(eff.get_uniform_location("tex"), 0);
+		glUniform3fv(eff.get_uniform_location("eye_pos"), 1, value_ptr(eye_pos()));
+		renderer::bind(shadows[1].buffer->get_depth(), 1);
+		glUniform1i(eff.get_uniform_location("shadow_map"), 1);
+		renderer::render(m);
+	}
 }
 
 
@@ -549,10 +572,6 @@ bool update(float delta_time)
 
 bool render()
 {
-	mat4 M;
-
-
-
 	// Render the shadow map ##############################################################################################################
 
 	// Set render target to shadow map
@@ -563,7 +582,7 @@ bool render()
 	glCullFace(GL_FRONT);
 
 	// Create a projection matrix for the poin of view of the light
-	mat4 LightProjectionMat = perspective<float>(90.0f, renderer::get_screen_aspect(), 0.1f, 1000.f);
+	mat4 lightProjectionMat = perspective<float>(90.0f, renderer::get_screen_aspect(), 0.1f, 1000.f);
 
 	// Bind shadow shader
 	renderer::bind(shadow_eff);
@@ -574,17 +593,11 @@ bool render()
 		turbo_mesh m = e.second;
 		// Create MVP matrix
 		auto M = m.get_hierarchical_transform_matrix();
-		mat4 MVP = LightProjectionMat * V * M;
+		mat4 MVP = lightProjectionMat * V * M;
 		glUniformMatrix4fv(shadow_eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(MVP));
 		renderer::render(m);
 	}
-
-	// Set render target back to the screen
-//	renderer::set_render_target();
 	glCullFace(GL_BACK);
-
-	// Bind main shader
-	renderer::bind(eff);
 
 	
 	//####################################################################################################################################
@@ -592,290 +605,41 @@ bool render()
 
 
 
-
-
-
-
-
-	// Render the scene ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	// Render the scene 
 	renderer::set_render_target();
-
-	// Calculate PV component of the MVP
-	mat4 PV = calculatePV();
-
-	for (auto &e : meshes)
-	{
-		turbo_mesh m = e.second;
-		renderer::bind(eff);
-		mat4 M = m.get_hierarchical_transform_matrix();
-		auto MVP = PV * M;
-
-		// Pass uniforms to shaders
-		glUniformMatrix4fv(eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(MVP));
-		glUniformMatrix4fv(eff.get_uniform_location("M"), 1, GL_FALSE, value_ptr(M));
-		glUniformMatrix3fv(eff.get_uniform_location("N"), 1, GL_FALSE, value_ptr(m.get_hierarchical_normal_matrix()));
-		mat4 lMVP = LightProjectionMat * shadows[1].get_view() * M;
-		glUniformMatrix4fv(eff.get_uniform_location("lMVP"), 1, GL_FALSE, value_ptr(lMVP));
-		renderer::bind(m.get_material(), "mat");
-		renderer::bind(light, "light");
-		renderer::bind(points, "points");
-		renderer::bind(spots, "spots");
-
-		// If no texture assigned, assign default
-		if (texs[e.first].get_id() != 0)
-			renderer::bind(texs[e.first], 0);
-		else
-			renderer::bind(texs["check_1"], 0);
-
-		// If no normal map assigned tell shader to not do normal mapping
-		if (normal_maps[e.first].get_id() != 0)
-		{
-			renderer::bind(normal_maps[e.first], 2);
-			glUniform1i(eff.get_uniform_location("normal_map"), 2);
-			glUniform1f(eff.get_uniform_location("map_norms"), 1.0);
-		}
-		else
-			glUniform1f(eff.get_uniform_location("map_norms"), -1.0);
-
-		glUniform1i(eff.get_uniform_location("pn"), points.size());
-		glUniform1i(eff.get_uniform_location("sn"), spots.size());
-		glUniform1i(eff.get_uniform_location("tex"), 0);
-		glUniform3fv(eff.get_uniform_location("eye_pos"), 1, value_ptr(eye_pos()));
-		renderer::bind(shadows[1].buffer->get_depth(), 1);
-		glUniform1i(eff.get_uniform_location("shadow_map"), 1);
-		renderer::render(m);
-	}
-
-	//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	render_scene(mat4(1.0f), lightProjectionMat);
 
 
 
 
-
-
-
-
-	// Stencil for first portal //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-	draw_stencil_mask(meshes1["portal1"]);
-
-	/*
-
-	glClear(GL_DEPTH_BUFFER_BIT);
-	glEnable(GL_STENCIL_TEST);
-
-	// Disable colour and depth masks
-	glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-	glDepthMask(GL_FALSE);
-
-	// Put 1 into stencil buffer where drawn
-	glStencilFunc(GL_ALWAYS, 1, 0xFF);
-	glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
-
-	// Enables writing to all bits of the stencil buffer
+	// Mark out portals in the stencil buffer //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	// Enables stencil buffer editing 
 	glStencilMask(0xFF);
-
 	// Clears the stencil buffer
 	glClear(GL_STENCIL_BUFFER_BIT);
-
-	// Binds shadow_eff because it only calculates positions for objects
-	renderer::bind(shadow_eff);
-	M = meshes1["portal1"].get_transform().get_transform_matrix();;
-	mat4 MVP = calculatePV() * M;
-	glUniformMatrix4fv(shadow_eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(MVP));
-	glDisable(GL_CULL_FACE);
-	renderer::render(meshes1["portal1"]);
-	glEnable(GL_CULL_FACE);
-
-	// Set colour and depth writing on
-	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-	glDepthMask(GL_TRUE);
-	// Disable stencil buffer editing on all bits
+	draw_stencil_mask(meshes1["portal1"], 1);
+	draw_stencil_mask(meshes1["portal2"], 2);
+	// Disables stencil buffer editing 
 	glStencilMask(0x00);
 
-	// Draw where stencil value is 1
-	glStencilFunc(GL_EQUAL, 1, 0xFF);
-
-	*/
-	
-	
-
-
-
-
+	// Clears the depth buffer
+	glClear(GL_DEPTH_BUFFER_BIT);
 	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
 
 
-
-
-
-
-
-
-	// Render image through first portal ////////////////////////////////////////////////////////////////////////////////////////////
-	//	renderer::set_render_target(first_portal_pass);
-	glStencilFunc(GL_EQUAL, 1, 0xFF);
 	renderer::set_render_target();
-	for (auto &e : meshes)
-	{
-		turbo_mesh m = e.second;
-
-		renderer::bind(eff);
-
-		M = m.get_hierarchical_transform_matrix();
-
-
-		// Calculate MVP using M that is transformed to be seen through the portal
-		auto MVP = calculatePortalPV(inverse(portals.second.get_transform().get_transform_matrix()) * portals.first.get_transform().get_transform_matrix()) * M;
-
-		// Pass uniforms to shaders
-		glUniformMatrix4fv(eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(MVP));
-		glUniformMatrix4fv(eff.get_uniform_location("M"), 1, GL_FALSE, value_ptr(M));
-		glUniformMatrix3fv(eff.get_uniform_location("N"), 1, GL_FALSE, value_ptr(m.get_hierarchical_normal_matrix()));
-		mat4 lMVP = LightProjectionMat * shadows[1].get_view() * M;
-		glUniformMatrix4fv(eff.get_uniform_location("lMVP"), 1, GL_FALSE, value_ptr(lMVP));
-		renderer::bind(m.get_material(), "mat");
-		renderer::bind(light, "light");
-		renderer::bind(points, "points");
-		renderer::bind(spots, "spots");
-
-		// If no texture assigned, assign default
-		if (texs[e.first].get_id() != 0)
-			renderer::bind(texs[e.first], 0);
-		else
-			renderer::bind(texs["check_1"], 0);
-
-		// If no normal map assigned tell shader to not do normal mapping
-		if (normal_maps[e.first].get_id() != 0)
-		{
-			renderer::bind(normal_maps[e.first], 2);
-			glUniform1i(eff.get_uniform_location("normal_map"), 2);
-			glUniform1f(eff.get_uniform_location("map_norms"), 1.0);
-		}
-		else
-			glUniform1f(eff.get_uniform_location("map_norms"), -1.0);
-
-		glUniform1i(eff.get_uniform_location("pn"), points.size());
-		glUniform1i(eff.get_uniform_location("sn"), spots.size());
-		glUniform1i(eff.get_uniform_location("tex"), 0);
-		glUniform3fv(eff.get_uniform_location("eye_pos"), 1, value_ptr(eye_pos()));
-		renderer::bind(shadows[1].buffer->get_depth(), 1);
-		glUniform1i(eff.get_uniform_location("shadow_map"), 1);
-		renderer::render(m);
-	}
-
-
-
-
-
-
-	// Stencil for second portal //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-	draw_stencil_mask(meshes1["portal2"]);
-
-	/*
-	glClear(GL_DEPTH_BUFFER_BIT);
-	glEnable(GL_STENCIL_TEST);
-
-	// Disable colour and depth masks
-	glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-	glDepthMask(GL_FALSE);
-
-	// Put 1 into stencil buffer where drawn
-	glStencilFunc(GL_ALWAYS, 1, 0xFF);
-	glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
-
-	// Enables writing to all bits of the stencil buffer
-	glStencilMask(0xFF);
-
-	// Clears the stencil buffer
-	glClear(GL_STENCIL_BUFFER_BIT);
-
-	// Binds shadow_eff because it only calculates positions for objects
-	renderer::bind(shadow_eff);
-	M = meshes1["portal2"].get_transform().get_transform_matrix();;
-	auto MVP = calculatePV() * M;
-	glUniformMatrix4fv(shadow_eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(MVP));
-	glDisable(GL_CULL_FACE);
-	renderer::render(meshes1["portal2"]);
-	glEnable(GL_CULL_FACE);
-
-	// Set colour and depth writing on
-	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-	glDepthMask(GL_TRUE);
-	// Disable stencil buffer editing on all bits
-	glStencilMask(0x00);
-
-	// Draw where stencil value is 1
+	// Render image through first portal
 	glStencilFunc(GL_EQUAL, 1, 0xFF);
+	render_scene(inverse(portals.second.get_transform().get_transform_matrix()) * portals.first.get_transform().get_transform_matrix(), lightProjectionMat);
+
+	// Render image through second portal
+	glStencilFunc(GL_EQUAL, 2, 0xFF);
+	render_scene(inverse(portals.first.get_transform().get_transform_matrix()) * portals.second.get_transform().get_transform_matrix(), lightProjectionMat);
 
 
-
-	*/
-
-
-
-
-	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-	
-	// Render image through first portal ////////////////////////////////////////////////////////////////////////////////////////////
-	//	renderer::set_render_target(first_portal_pass);
-	glStencilFunc(GL_EQUAL, 1, 0xFF);
-	renderer::set_render_target();
-	for (auto &e : meshes)
-	{
-		turbo_mesh m = e.second;
-
-		renderer::bind(eff);
-
-		M = m.get_hierarchical_transform_matrix();
-
-
-		// Calculate MVP using M that is transformed to be seen through the portal
-		auto MVP = calculatePortalPV(inverse(portals.first.get_transform().get_transform_matrix()) * portals.second.get_transform().get_transform_matrix()) * M;
-
-		// Pass uniforms to shaders
-		glUniformMatrix4fv(eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(MVP));
-		glUniformMatrix4fv(eff.get_uniform_location("M"), 1, GL_FALSE, value_ptr(M));
-		glUniformMatrix3fv(eff.get_uniform_location("N"), 1, GL_FALSE, value_ptr(m.get_hierarchical_normal_matrix()));
-		mat4 lMVP = LightProjectionMat * shadows[1].get_view() * M;
-		glUniformMatrix4fv(eff.get_uniform_location("lMVP"), 1, GL_FALSE, value_ptr(lMVP));
-		renderer::bind(m.get_material(), "mat");
-		renderer::bind(light, "light");
-		renderer::bind(points, "points");
-		renderer::bind(spots, "spots");
-
-		// If no texture assigned, assign default
-		if (texs[e.first].get_id() != 0)
-			renderer::bind(texs[e.first], 0);
-		else
-			renderer::bind(texs["check_1"], 0);
-
-		// If no normal map assigned tell shader to not do normal mapping
-		if (normal_maps[e.first].get_id() != 0)
-		{
-			renderer::bind(normal_maps[e.first], 2);
-			glUniform1i(eff.get_uniform_location("normal_map"), 2);
-			glUniform1f(eff.get_uniform_location("map_norms"), 1.0);
-		}
-		else
-			glUniform1f(eff.get_uniform_location("map_norms"), -1.0);
-
-		glUniform1i(eff.get_uniform_location("pn"), points.size());
-		glUniform1i(eff.get_uniform_location("sn"), spots.size());
-		glUniform1i(eff.get_uniform_location("tex"), 0);
-		glUniform3fv(eff.get_uniform_location("eye_pos"), 1, value_ptr(eye_pos()));
-		renderer::bind(shadows[1].buffer->get_depth(), 1);
-		glUniform1i(eff.get_uniform_location("shadow_map"), 1);
-		renderer::render(m);
-	}
-
-
-
-
+	// Disable stencil testing
 	glDisable(GL_STENCIL_TEST);
 	
 	return true;
