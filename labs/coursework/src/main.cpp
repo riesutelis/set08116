@@ -214,6 +214,48 @@ void moveFreeCamera(float delta_time)
 
 
 
+// Draws a stencil mask for a single mesh
+void draw_stencil_mask(mesh m)
+{
+	glClear(GL_DEPTH_BUFFER_BIT);
+	glEnable(GL_STENCIL_TEST);
+
+	// Disable colour and depth masks
+	glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+	glDepthMask(GL_FALSE);
+
+	// Put 1 into stencil buffer where drawn
+	glStencilFunc(GL_ALWAYS, 1, 0xFF);
+	glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+
+	// Enables writing to all bits of the stencil buffer
+	glStencilMask(0xFF);
+
+	// Clears the stencil buffer
+	glClear(GL_STENCIL_BUFFER_BIT);
+
+	// Binds shadow_eff because it only calculates positions for objects
+	renderer::bind(shadow_eff);
+	mat4 M = m.get_transform().get_transform_matrix();;
+	mat4 MVP = calculatePV() * M;
+	glUniformMatrix4fv(shadow_eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(MVP));
+	glDisable(GL_CULL_FACE);
+	renderer::render(m);
+	glEnable(GL_CULL_FACE);
+
+	// Set colour and depth writing on
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+	glDepthMask(GL_TRUE);
+	// Disable stencil buffer editing on all bits
+	glStencilMask(0x00);
+
+	// Draw where stencil value is 1
+	glStencilFunc(GL_EQUAL, 1, 0xFF);
+}
+
+
+
+
 bool load_content()
 {
 	// setting up the portals
@@ -224,10 +266,6 @@ bool load_content()
 	portals.second.get_transform().position = vec3(15.0, 4.0, -15.0);
 	//portals.second.get_transform().orientation = vec3(half_pi<float>(), 0.0, half_pi<float>());
 
-
-
-	
-	
 	// debug stuff
 	meshes1["portal1"] = turbo_mesh(geometry_builder::create_disk(40, vec2(6.0f, 3.0f)));
 	meshes1["portal1"].get_transform().position = vec3(-10.0, 4.0, 10.0);
@@ -236,7 +274,9 @@ bool load_content()
 	meshes1["portal2"].get_transform().position = vec3(15.0, 4.0, -15.0);
 	meshes1["portal2"].get_transform().orientation = vec3(half_pi<float>(), 0.0, half_pi<float>());
 
-	
+
+
+
 
 
 	// Materials
@@ -246,14 +286,16 @@ bool load_content()
 
 
 	// Load normal maps ---------------------------------------------------------------------------------------------------------------------------------------
-	normal_maps["wall0"] = texture("textures/CeramicBrick_normalmap_M.jpg");
-	normal_maps["deviceFrameBottom"] = texture("textures/Copper_A_normalmap_M.png");
-	normal_maps["deviceFrameRight"] = normal_maps["deviceFrameBottom"];
-	normal_maps["deviceFrameLeft"] = normal_maps["deviceFrameBottom"];
-	normal_maps["deviceFrameTop"] = normal_maps["deviceFrameBottom"];
-	normal_maps["deviceArmHorizontal"] = normal_maps["deviceFrameBottom"];
-	normal_maps["deviceArmVertical"] = normal_maps["deviceFrameBottom"];
-	normal_maps["deviceRing"] = normal_maps["deviceFrameBottom"];
+	{
+		normal_maps["wall0"] = texture("textures/CeramicBrick_normalmap_M.jpg");
+		normal_maps["deviceFrameBottom"] = texture("textures/Copper_A_normalmap_M.png");
+		normal_maps["deviceFrameRight"] = normal_maps["deviceFrameBottom"];
+		normal_maps["deviceFrameLeft"] = normal_maps["deviceFrameBottom"];
+		normal_maps["deviceFrameTop"] = normal_maps["deviceFrameBottom"];
+		normal_maps["deviceArmHorizontal"] = normal_maps["deviceFrameBottom"];
+		normal_maps["deviceArmVertical"] = normal_maps["deviceFrameBottom"];
+		normal_maps["deviceRing"] = normal_maps["deviceFrameBottom"];
+	}
 	//---------------------------------------------------------------------------------------------------------------------------------------------------------
 
 
@@ -264,126 +306,127 @@ bool load_content()
 	//meshes["box"].set_material(whiteCopper);
 	//normal_maps["box"] = texture("textures/brick_normalmap.jpg");
 	//
+	{
+		meshes["floor"] = turbo_mesh(geometry_builder::create_plane());
+		meshes["floor"].get_transform().position = vec3(0.0f, 0.0f, 0.0f);
+		meshes["floor"].set_material(whitePlasticNoShine);
 
-	meshes["floor"] = turbo_mesh(geometry_builder::create_plane());
-	meshes["floor"].get_transform().position = vec3(0.0f, 0.0f, 0.0f);
-	meshes["floor"].set_material(whitePlasticNoShine);
+		meshes["arch0"] = turbo_mesh(geometry("models/arch.obj"));
+		meshes["arch0"].get_transform().position = vec3(-19.0f, 5.0f, -1.0f);
+		meshes["arch0"].get_transform().orientation = vec3(0.0f, half_pi<float>(), 0.0f);
+		meshes["arch0"].set_material(whitePlastic);
 
-	meshes["arch0"] = turbo_mesh(geometry("models/arch.obj"));
-	meshes["arch0"].get_transform().position = vec3(-19.0f, 5.0f, -1.0f);
-	meshes["arch0"].get_transform().orientation = vec3(0.0f, half_pi<float>(), 0.0f);
-	meshes["arch0"].set_material(whitePlastic);
+		meshes["lamppost0"] = turbo_mesh(geometry("models/lamp.obj"));
+		meshes["lamppost0"].get_transform().position = vec3(25.0f, 0.0f, 18.0f);
+		meshes["lamppost0"].get_transform().scale = vec3(0.05f, 0.05f, 0.05f);
+		meshes["lamppost0"].set_material(whitePlastic);
 
-	meshes["lamppost0"] = turbo_mesh(geometry("models/lamp.obj"));
-	meshes["lamppost0"].get_transform().position = vec3(25.0f, 0.0f, 18.0f);
-	meshes["lamppost0"].get_transform().scale = vec3(0.05f, 0.05f, 0.05f);
-	meshes["lamppost0"].set_material(whitePlastic);
+		meshes["lamppost1"] = turbo_mesh(geometry("models/lamp.obj"));
+		meshes["lamppost1"].get_transform().position = vec3(25.0f, 0.0f, 0.0f);
+		meshes["lamppost1"].get_transform().scale = vec3(0.05f, 0.05f, 0.05f);
+		meshes["lamppost1"].set_material(whitePlastic);
 
-	meshes["lamppost1"] = turbo_mesh(geometry("models/lamp.obj"));
-	meshes["lamppost1"].get_transform().position = vec3(25.0f, 0.0f, 0.0f);
-	meshes["lamppost1"].get_transform().scale = vec3(0.05f, 0.05f, 0.05f);
-	meshes["lamppost1"].set_material(whitePlastic);
+		meshes["wall0"] = turbo_mesh(geometry_builder::create_box(vec3(2.0f, 12.0f, 60.0f)));
+		meshes["wall0"].get_transform().position = vec3(-20.0f, 6.0f, 0.0f);
+		meshes["wall0"].set_material(whitePlastic);
 
-	meshes["wall0"] = turbo_mesh(geometry_builder::create_box(vec3(2.0f, 12.0f, 60.0f)));
-	meshes["wall0"].get_transform().position = vec3(-20.0f, 6.0f, 0.0f);
-	meshes["wall0"].set_material(whitePlastic);
+		meshes["wall1"] = turbo_mesh(geometry_builder::create_box(vec3(60.0f, 12.0f, 2.0f)));
+		meshes["wall1"].get_transform().position = vec3(10.0f, 6.0f, -30.0f);
+		meshes["wall1"].set_material(whitePlasticNoShine);
 
-	meshes["wall1"] = turbo_mesh(geometry_builder::create_box(vec3(60.0f, 12.0f, 2.0f)));
-	meshes["wall1"].get_transform().position = vec3(10.0f, 6.0f, -30.0f);
-	meshes["wall1"].set_material(whitePlasticNoShine);
+		meshes["spotlight0"] = turbo_mesh(geometry("models/street lamp.obj"));
+		meshes["spotlight0"].get_transform().position = vec3(-18.5f, 0.0f, 5.0f);
+		meshes["spotlight0"].get_transform().scale = vec3(0.1f, 0.1f, 0.1f);
 
-	meshes["spotlight0"] = turbo_mesh(geometry("models/street lamp.obj"));
-	meshes["spotlight0"].get_transform().position = vec3(-18.5f, 0.0f, 5.0f);
-	meshes["spotlight0"].get_transform().scale = vec3(0.1f, 0.1f, 0.1f);
-	
-	meshes["flashlight0"] = turbo_mesh(geometry("models/Flashlight.obj"));
-	meshes["flashlight0"].get_transform().position = vec3(0.0, 0.0f, 0.25f);
-	meshes["flashlight0"].get_transform().scale = vec3(0.2f, 0.2f, 0.2f);
-	meshes["flashlight0"].get_transform().orientation = vec3(0.0f, pi<float>(), 0.0f);
+		meshes["flashlight0"] = turbo_mesh(geometry("models/Flashlight.obj"));
+		meshes["flashlight0"].get_transform().position = vec3(0.0, 0.0f, 0.25f);
+		meshes["flashlight0"].get_transform().scale = vec3(0.2f, 0.2f, 0.2f);
+		meshes["flashlight0"].get_transform().orientation = vec3(0.0f, pi<float>(), 0.0f);
 
-	// Child to deviceFrameBottom
-	meshes["deviceArmVertical"] = turbo_mesh(geometry_builder::create_box(vec3(0.29f, 7.0f, 0.1f)));
-	meshes["deviceArmVertical"].get_transform().position = vec3(0.0f, 3.75f, 0.0f);
-	meshes["deviceArmVertical"].set_material(whiteCopper);
-	meshes["deviceArmVertical"].set_parent(&meshes["deviceFrameBottom"]);
+		// Child to deviceFrameBottom
+		meshes["deviceArmVertical"] = turbo_mesh(geometry_builder::create_box(vec3(0.29f, 7.0f, 0.1f)));
+		meshes["deviceArmVertical"].get_transform().position = vec3(0.0f, 3.75f, 0.0f);
+		meshes["deviceArmVertical"].set_material(whiteCopper);
+		meshes["deviceArmVertical"].set_parent(&meshes["deviceFrameBottom"]);
 
-	// Child to deviceFrameBottom
-	meshes["deviceArmHorizontal"] = turbo_mesh(geometry_builder::create_box(vec3(20.0f, 0.3f, 0.1f)));
-	meshes["deviceArmHorizontal"].get_transform().position = vec3(0.0f, 3.5f, 0.0f);
-	meshes["deviceArmHorizontal"].set_material(whiteCopper);
-	meshes["deviceArmHorizontal"].set_parent(&meshes["deviceFrameBottom"]);
-	
-	// Child to deviceArmVertical
-	meshes["deviceRing"] = turbo_mesh(geometry_builder::create_torus(32, 20, 0.2f, 1.2f));
-	meshes["deviceRing"].get_transform().position = vec3(0.0f, 0.0f, 0.0f);
-	meshes["deviceRing"].get_transform().orientation = vec3(half_pi<float>(), 0.0f, 0.0f);
-	meshes["deviceRing"].set_material(whiteCopper);
-	meshes["deviceRing"].set_parent(&meshes["deviceArmVertical"]);
-	
-	// Child to deviceFrameBottom
-	meshes["deviceFrameTop"] = turbo_mesh(geometry_builder::create_box(vec3(20.0f, 0.5f, 0.5f)));
-	meshes["deviceFrameTop"].get_transform().position = vec3(0.0f, 7.5f, 0.0f);
-	meshes["deviceFrameTop"].set_material(whiteCopper);
-	meshes["deviceFrameTop"].set_parent(&meshes["deviceFrameBottom"]);
+		// Child to deviceFrameBottom
+		meshes["deviceArmHorizontal"] = turbo_mesh(geometry_builder::create_box(vec3(20.0f, 0.3f, 0.1f)));
+		meshes["deviceArmHorizontal"].get_transform().position = vec3(0.0f, 3.5f, 0.0f);
+		meshes["deviceArmHorizontal"].set_material(whiteCopper);
+		meshes["deviceArmHorizontal"].set_parent(&meshes["deviceFrameBottom"]);
 
-	// Child to deviceFrameBottom
-	meshes["deviceFrameLeft"] = turbo_mesh(geometry_builder::create_box(vec3(0.5f, 8.0f, 0.5f)));
-	meshes["deviceFrameLeft"].get_transform().position = vec3(-10.25f, 3.75f, 0.0f);
-	meshes["deviceFrameLeft"].set_material(whiteCopper);
-	meshes["deviceFrameLeft"].set_parent(&meshes["deviceFrameBottom"]);
+		// Child to deviceArmVertical
+		meshes["deviceRing"] = turbo_mesh(geometry_builder::create_torus(32, 20, 0.2f, 1.2f));
+		meshes["deviceRing"].get_transform().position = vec3(0.0f, 0.0f, 0.0f);
+		meshes["deviceRing"].get_transform().orientation = vec3(half_pi<float>(), 0.0f, 0.0f);
+		meshes["deviceRing"].set_material(whiteCopper);
+		meshes["deviceRing"].set_parent(&meshes["deviceArmVertical"]);
 
-	// Child to deviceFrameBottom
-	meshes["deviceFrameRight"] = turbo_mesh(geometry_builder::create_box(vec3(0.5f, 8.0f, 0.5f)));
-	meshes["deviceFrameRight"].get_transform().position = vec3(10.25f, 3.75f, 0.0f);
-	meshes["deviceFrameRight"].set_material(whiteCopper);
-	meshes["deviceFrameRight"].set_parent(&meshes["deviceFrameBottom"]);
+		// Child to deviceFrameBottom
+		meshes["deviceFrameTop"] = turbo_mesh(geometry_builder::create_box(vec3(20.0f, 0.5f, 0.5f)));
+		meshes["deviceFrameTop"].get_transform().position = vec3(0.0f, 7.5f, 0.0f);
+		meshes["deviceFrameTop"].set_material(whiteCopper);
+		meshes["deviceFrameTop"].set_parent(&meshes["deviceFrameBottom"]);
 
-	// Top dog of the hierarchy tree
-	meshes["deviceFrameBottom"] = turbo_mesh(geometry_builder::create_box(vec3(20.0f, 0.5f, 0.5f)));
-	meshes["deviceFrameBottom"].get_transform().position = vec3(0.0f, 0.25f, -24.0f);
-	meshes["deviceFrameBottom"].set_material(whiteCopper);
+		// Child to deviceFrameBottom
+		meshes["deviceFrameLeft"] = turbo_mesh(geometry_builder::create_box(vec3(0.5f, 8.0f, 0.5f)));
+		meshes["deviceFrameLeft"].get_transform().position = vec3(-10.25f, 3.75f, 0.0f);
+		meshes["deviceFrameLeft"].set_material(whiteCopper);
+		meshes["deviceFrameLeft"].set_parent(&meshes["deviceFrameBottom"]);
 
+		// Child to deviceFrameBottom
+		meshes["deviceFrameRight"] = turbo_mesh(geometry_builder::create_box(vec3(0.5f, 8.0f, 0.5f)));
+		meshes["deviceFrameRight"].get_transform().position = vec3(10.25f, 3.75f, 0.0f);
+		meshes["deviceFrameRight"].set_material(whiteCopper);
+		meshes["deviceFrameRight"].set_parent(&meshes["deviceFrameBottom"]);
+
+		// Top dog of the hierarchy tree
+		meshes["deviceFrameBottom"] = turbo_mesh(geometry_builder::create_box(vec3(20.0f, 0.5f, 0.5f)));
+		meshes["deviceFrameBottom"].get_transform().position = vec3(0.0f, 0.25f, -24.0f);
+		meshes["deviceFrameBottom"].set_material(whiteCopper);
+	}
 	//##########################################################################################################################################################
 
 
 
 
-
 	// Load textures -------------------------------------------------------------------------------------------------------------------------------------------
-	texs["check_1"] = texture("textures/check_1.png", true, true);
-	texs["floor"] = texture("textures/Asphalt.jpg", true, true);
-	texs["arch0"] = texture("textures/concrete.jpg", true, true);
-	texs["lamppost0"] = texture("textures/st-metal.jpg", true, true);
-	texs["lamppost1"] = texs["lamppost0"];
-	texs["wall0"] = texture("textures/CeramicBrick_albedo_M.jpg", true, true);
-	texs["wall1"] = texture("textures/map-8.jpg", true, true);
-	texs["spotlight0"] = texs["lamppost0"];
-	texs["deviceFrameBottom"] = texture("textures/Copper_A_albedo_M.png", true, true);
-	texs["deviceFrameRight"] = texs["deviceFrameBottom"];
-	texs["deviceFrameLeft"] = texs["deviceFrameBottom"];
-	texs["deviceFrameTop"] = texs["deviceFrameBottom"];
-	texs["deviceArmHorizontal"] = texs["deviceFrameBottom"];
-	texs["deviceArmVertical"] = texs["deviceFrameBottom"];
-	texs["deviceRing"] = texs["deviceFrameBottom"];
-
+	{
+		texs["check_1"] = texture("textures/check_1.png", true, true);
+		texs["floor"] = texture("textures/Asphalt.jpg", true, true);
+		texs["arch0"] = texture("textures/concrete.jpg", true, true);
+		texs["lamppost0"] = texture("textures/st-metal.jpg", true, true);
+		texs["lamppost1"] = texs["lamppost0"];
+		texs["wall0"] = texture("textures/CeramicBrick_albedo_M.jpg", true, true);
+		texs["wall1"] = texture("textures/map-8.jpg", true, true);
+		texs["spotlight0"] = texs["lamppost0"];
+		texs["deviceFrameBottom"] = texture("textures/Copper_A_albedo_M.png", true, true);
+		texs["deviceFrameRight"] = texs["deviceFrameBottom"];
+		texs["deviceFrameLeft"] = texs["deviceFrameBottom"];
+		texs["deviceFrameTop"] = texs["deviceFrameBottom"];
+		texs["deviceArmHorizontal"] = texs["deviceFrameBottom"];
+		texs["deviceArmVertical"] = texs["deviceFrameBottom"];
+		texs["deviceRing"] = texs["deviceFrameBottom"];
+	}
 	//----------------------------------------------------------------------------------------------------------------------------------------------------------
 
 
 
 
 	// Load lights ############################################################################################################################################
-	light = directional_light(vec4(0.003f, 0.003f, 0.003f, 1.0f), vec4(0.2f, 0.08f, 0.06f, 1.0f), normalize(vec3(0.6f, -1.0f, 0.3f)));		// evening
-//	light = directional_light(vec4(0.0f, 0.0f, 0.0f, 1.0f), vec4(0.0f, 0.0f, 0.0f, 1.0f), normalize(vec3(0.6f, -1.0f, 0.3f)));				// No directional for debugging
-	light = directional_light(vec4(1.0f, 1.0f, 1.0f, 1.0f), vec4(0.0f, 0.0f, 0.0f, 1.0f), normalize(vec3(0.6f, -1.0f, 0.3f)));				// full ambient for debugging
+	{
+		light = directional_light(vec4(0.003f, 0.003f, 0.003f, 1.0f), vec4(0.2f, 0.08f, 0.06f, 1.0f), normalize(vec3(0.6f, -1.0f, 0.3f)));		// evening
+	//	light = directional_light(vec4(0.0f, 0.0f, 0.0f, 1.0f), vec4(0.0f, 0.0f, 0.0f, 1.0f), normalize(vec3(0.6f, -1.0f, 0.3f)));				// No directional for debugging
+		light = directional_light(vec4(1.0f, 1.0f, 1.0f, 1.0f), vec4(0.0f, 0.0f, 0.0f, 1.0f), normalize(vec3(0.6f, -1.0f, 0.3f)));				// full ambient for debugging
 
-	points.push_back(point_light(vec4(1.0f, 0.9f, 0.63f, 1.0f), vec3(25.0f, 11.5f, 18.0f), 0.0f, 0.01f, 0.01f));							// Lamppost0
-	points.push_back(point_light(vec4(1.0f, 0.9f, 0.63f, 1.0f), vec3(25.0f, 11.5f, 0.0f), 0.0f, 0.01f, 0.01f));								// Lamppost1
+		points.push_back(point_light(vec4(1.0f, 0.9f, 0.63f, 1.0f), vec3(25.0f, 11.5f, 18.0f), 0.0f, 0.01f, 0.01f));							// Lamppost0
+		points.push_back(point_light(vec4(1.0f, 0.9f, 0.63f, 1.0f), vec3(25.0f, 11.5f, 0.0f), 0.0f, 0.01f, 0.01f));								// Lamppost1
 
-	spots.push_back(spot_light(white, vec3(-16.5f, 14.3f, 5.0f), vec3(0.0f, -1.0f, 0.0f), 0.0f, 0.05f, 0.005f, 10.0f));						// spotlight0
-	shadows.push_back(shadow_map(renderer::get_screen_width(), renderer::get_screen_height()));
-	spots.push_back(spot_light(white, vec3(0.0f, 0.4f, -1.0f), vec3(0.0f, 0.0f, -1.0f), 0.0f, 0.05f, 0.0f, 10.0f));							// flashlight
-	shadows.push_back(shadow_map(renderer::get_screen_width(), renderer::get_screen_height()));
-	
+		spots.push_back(spot_light(white, vec3(-16.5f, 14.3f, 5.0f), vec3(0.0f, -1.0f, 0.0f), 0.0f, 0.05f, 0.005f, 10.0f));						// spotlight0
+		shadows.push_back(shadow_map(renderer::get_screen_width(), renderer::get_screen_height()));
+		spots.push_back(spot_light(white, vec3(0.0f, 0.4f, -1.0f), vec3(0.0f, 0.0f, -1.0f), 0.0f, 0.05f, 0.0f, 10.0f));							// flashlight
+		shadows.push_back(shadow_map(renderer::get_screen_width(), renderer::get_screen_height()));
+	}
 	//#########################################################################################################################################################
 	
 	
@@ -420,7 +463,6 @@ bool load_content()
 	cam_select = free0;
 	return true;
 }
-
 
 bool update(float delta_time)
 {
@@ -507,6 +549,10 @@ bool update(float delta_time)
 
 bool render()
 {
+	mat4 M;
+
+
+
 	// Render the shadow map ##############################################################################################################
 
 	// Set render target to shadow map
@@ -540,7 +586,7 @@ bool render()
 	// Bind main shader
 	renderer::bind(eff);
 
-
+	
 	//####################################################################################################################################
 
 
@@ -549,10 +595,236 @@ bool render()
 
 
 
-	// Render image through portal ////////////////////////////////////////////////////////////////////////////////////////////
-//	renderer::set_render_target(first_portal_pass);
+
+
+	// Render the scene ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	renderer::set_render_target();
-	mat4 M;
+
+	// Calculate PV component of the MVP
+	mat4 PV = calculatePV();
+
+	for (auto &e : meshes)
+	{
+		turbo_mesh m = e.second;
+		renderer::bind(eff);
+		mat4 M = m.get_hierarchical_transform_matrix();
+		auto MVP = PV * M;
+
+		// Pass uniforms to shaders
+		glUniformMatrix4fv(eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(MVP));
+		glUniformMatrix4fv(eff.get_uniform_location("M"), 1, GL_FALSE, value_ptr(M));
+		glUniformMatrix3fv(eff.get_uniform_location("N"), 1, GL_FALSE, value_ptr(m.get_hierarchical_normal_matrix()));
+		mat4 lMVP = LightProjectionMat * shadows[1].get_view() * M;
+		glUniformMatrix4fv(eff.get_uniform_location("lMVP"), 1, GL_FALSE, value_ptr(lMVP));
+		renderer::bind(m.get_material(), "mat");
+		renderer::bind(light, "light");
+		renderer::bind(points, "points");
+		renderer::bind(spots, "spots");
+
+		// If no texture assigned, assign default
+		if (texs[e.first].get_id() != 0)
+			renderer::bind(texs[e.first], 0);
+		else
+			renderer::bind(texs["check_1"], 0);
+
+		// If no normal map assigned tell shader to not do normal mapping
+		if (normal_maps[e.first].get_id() != 0)
+		{
+			renderer::bind(normal_maps[e.first], 2);
+			glUniform1i(eff.get_uniform_location("normal_map"), 2);
+			glUniform1f(eff.get_uniform_location("map_norms"), 1.0);
+		}
+		else
+			glUniform1f(eff.get_uniform_location("map_norms"), -1.0);
+
+		glUniform1i(eff.get_uniform_location("pn"), points.size());
+		glUniform1i(eff.get_uniform_location("sn"), spots.size());
+		glUniform1i(eff.get_uniform_location("tex"), 0);
+		glUniform3fv(eff.get_uniform_location("eye_pos"), 1, value_ptr(eye_pos()));
+		renderer::bind(shadows[1].buffer->get_depth(), 1);
+		glUniform1i(eff.get_uniform_location("shadow_map"), 1);
+		renderer::render(m);
+	}
+
+	//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+
+
+
+
+	// Stencil for first portal //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+	draw_stencil_mask(meshes1["portal1"]);
+
+	/*
+
+	glClear(GL_DEPTH_BUFFER_BIT);
+	glEnable(GL_STENCIL_TEST);
+
+	// Disable colour and depth masks
+	glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+	glDepthMask(GL_FALSE);
+
+	// Put 1 into stencil buffer where drawn
+	glStencilFunc(GL_ALWAYS, 1, 0xFF);
+	glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+
+	// Enables writing to all bits of the stencil buffer
+	glStencilMask(0xFF);
+
+	// Clears the stencil buffer
+	glClear(GL_STENCIL_BUFFER_BIT);
+
+	// Binds shadow_eff because it only calculates positions for objects
+	renderer::bind(shadow_eff);
+	M = meshes1["portal1"].get_transform().get_transform_matrix();;
+	mat4 MVP = calculatePV() * M;
+	glUniformMatrix4fv(shadow_eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(MVP));
+	glDisable(GL_CULL_FACE);
+	renderer::render(meshes1["portal1"]);
+	glEnable(GL_CULL_FACE);
+
+	// Set colour and depth writing on
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+	glDepthMask(GL_TRUE);
+	// Disable stencil buffer editing on all bits
+	glStencilMask(0x00);
+
+	// Draw where stencil value is 1
+	glStencilFunc(GL_EQUAL, 1, 0xFF);
+
+	*/
+	
+	
+
+
+
+
+	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+
+
+
+
+
+
+	// Render image through first portal ////////////////////////////////////////////////////////////////////////////////////////////
+	//	renderer::set_render_target(first_portal_pass);
+	glStencilFunc(GL_EQUAL, 1, 0xFF);
+	renderer::set_render_target();
+	for (auto &e : meshes)
+	{
+		turbo_mesh m = e.second;
+
+		renderer::bind(eff);
+
+		M = m.get_hierarchical_transform_matrix();
+
+
+		// Calculate MVP using M that is transformed to be seen through the portal
+		auto MVP = calculatePortalPV(inverse(portals.second.get_transform().get_transform_matrix()) * portals.first.get_transform().get_transform_matrix()) * M;
+
+		// Pass uniforms to shaders
+		glUniformMatrix4fv(eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(MVP));
+		glUniformMatrix4fv(eff.get_uniform_location("M"), 1, GL_FALSE, value_ptr(M));
+		glUniformMatrix3fv(eff.get_uniform_location("N"), 1, GL_FALSE, value_ptr(m.get_hierarchical_normal_matrix()));
+		mat4 lMVP = LightProjectionMat * shadows[1].get_view() * M;
+		glUniformMatrix4fv(eff.get_uniform_location("lMVP"), 1, GL_FALSE, value_ptr(lMVP));
+		renderer::bind(m.get_material(), "mat");
+		renderer::bind(light, "light");
+		renderer::bind(points, "points");
+		renderer::bind(spots, "spots");
+
+		// If no texture assigned, assign default
+		if (texs[e.first].get_id() != 0)
+			renderer::bind(texs[e.first], 0);
+		else
+			renderer::bind(texs["check_1"], 0);
+
+		// If no normal map assigned tell shader to not do normal mapping
+		if (normal_maps[e.first].get_id() != 0)
+		{
+			renderer::bind(normal_maps[e.first], 2);
+			glUniform1i(eff.get_uniform_location("normal_map"), 2);
+			glUniform1f(eff.get_uniform_location("map_norms"), 1.0);
+		}
+		else
+			glUniform1f(eff.get_uniform_location("map_norms"), -1.0);
+
+		glUniform1i(eff.get_uniform_location("pn"), points.size());
+		glUniform1i(eff.get_uniform_location("sn"), spots.size());
+		glUniform1i(eff.get_uniform_location("tex"), 0);
+		glUniform3fv(eff.get_uniform_location("eye_pos"), 1, value_ptr(eye_pos()));
+		renderer::bind(shadows[1].buffer->get_depth(), 1);
+		glUniform1i(eff.get_uniform_location("shadow_map"), 1);
+		renderer::render(m);
+	}
+
+
+
+
+
+
+	// Stencil for second portal //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+	draw_stencil_mask(meshes1["portal2"]);
+
+	/*
+	glClear(GL_DEPTH_BUFFER_BIT);
+	glEnable(GL_STENCIL_TEST);
+
+	// Disable colour and depth masks
+	glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+	glDepthMask(GL_FALSE);
+
+	// Put 1 into stencil buffer where drawn
+	glStencilFunc(GL_ALWAYS, 1, 0xFF);
+	glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+
+	// Enables writing to all bits of the stencil buffer
+	glStencilMask(0xFF);
+
+	// Clears the stencil buffer
+	glClear(GL_STENCIL_BUFFER_BIT);
+
+	// Binds shadow_eff because it only calculates positions for objects
+	renderer::bind(shadow_eff);
+	M = meshes1["portal2"].get_transform().get_transform_matrix();;
+	auto MVP = calculatePV() * M;
+	glUniformMatrix4fv(shadow_eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(MVP));
+	glDisable(GL_CULL_FACE);
+	renderer::render(meshes1["portal2"]);
+	glEnable(GL_CULL_FACE);
+
+	// Set colour and depth writing on
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+	glDepthMask(GL_TRUE);
+	// Disable stencil buffer editing on all bits
+	glStencilMask(0x00);
+
+	// Draw where stencil value is 1
+	glStencilFunc(GL_EQUAL, 1, 0xFF);
+
+
+
+	*/
+
+
+
+
+	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+	
+	// Render image through first portal ////////////////////////////////////////////////////////////////////////////////////////////
+	//	renderer::set_render_target(first_portal_pass);
+	glStencilFunc(GL_EQUAL, 1, 0xFF);
+	renderer::set_render_target();
 	for (auto &e : meshes)
 	{
 		turbo_mesh m = e.second;
@@ -602,117 +874,6 @@ bool render()
 	}
 
 
-
-	// Stencil stuff //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-
-	glClear(GL_DEPTH_BUFFER_BIT);
-	glEnable(GL_STENCIL_TEST);
-
-	// Disable colour and depth masks
-	glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-	glDepthMask(GL_FALSE);
-
-	// Put 1 into stencil buffer where drawn
-	glStencilFunc(GL_ALWAYS, 1, 0xFF);
-	glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
-
-	// Enables writing to all bits of the stencil buffer
-	glStencilMask(0xFF);
-
-	// Clears the stencil buffer
-	glClear(GL_STENCIL_BUFFER_BIT);
-
-	// Binds shadow_eff because it only calculates positions for objects
-	renderer::bind(shadow_eff);
-	M = meshes1["portal1"].get_transform().get_transform_matrix();;
-	mat4 MVP = calculatePV() * M;
-	glUniformMatrix4fv(shadow_eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(MVP));
-	renderer::render(meshes1["portal1"]);
-
-	// Set colour and depth writing on
-	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-	glDepthMask(GL_TRUE);
-	// Disable stencil buffer editing on all bits
-	glStencilMask(0x00);
-
-	// Draw where stencil value is 1
-	glStencilFunc(GL_EQUAL, 0, 0xFF);
-
-
-	
-
-
-
-
-
-	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-
-
-
-
-
-
-
-	
-
-
-
-
-	
-	
-
-	// Render the scene
-	renderer::set_render_target();
-
-	// Calculate PV component of the MVP
-	mat4 PV = calculatePV();
-
-	for (auto &e : meshes)
-	{
-		turbo_mesh m = e.second;
-		renderer::bind(eff);
-		mat4 M = m.get_hierarchical_transform_matrix();
-		auto MVP = PV * M;
-		
-		// Pass uniforms to shaders
-		glUniformMatrix4fv(eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(MVP));
-		glUniformMatrix4fv(eff.get_uniform_location("M"), 1, GL_FALSE, value_ptr(M));
-		glUniformMatrix3fv(eff.get_uniform_location("N"), 1, GL_FALSE, value_ptr(m.get_hierarchical_normal_matrix()));
-		mat4 lMVP = LightProjectionMat * shadows[1].get_view() * M;
-		glUniformMatrix4fv(eff.get_uniform_location("lMVP"), 1, GL_FALSE, value_ptr(lMVP));
-		renderer::bind(m.get_material(), "mat");
-		renderer::bind(light, "light");
-		renderer::bind(points, "points");
-		renderer::bind(spots, "spots");
-		
-		// If no texture assigned, assign default
-		if (texs[e.first].get_id() != 0)
-			renderer::bind(texs[e.first], 0);
-		else
-			renderer::bind(texs["check_1"], 0);
-
-		// If no normal map assigned tell shader to not do normal mapping
-		if (normal_maps[e.first].get_id() != 0)
-		{
-			renderer::bind(normal_maps[e.first], 2);
-			glUniform1i(eff.get_uniform_location("normal_map"), 2);
-			glUniform1f(eff.get_uniform_location("map_norms"), 1.0);
-		}
-		else
-			glUniform1f(eff.get_uniform_location("map_norms"), -1.0);
-
-		glUniform1i(eff.get_uniform_location("pn"), points.size());
-		glUniform1i(eff.get_uniform_location("sn"), spots.size());
-		glUniform1i(eff.get_uniform_location("tex"), 0);
-		glUniform3fv(eff.get_uniform_location("eye_pos"), 1, value_ptr(eye_pos()));
-		renderer::bind(shadows[1].buffer->get_depth(), 1);
-		glUniform1i(eff.get_uniform_location("shadow_map"), 1);
-		renderer::render(m);
-	}
-	
-	
 
 
 	glDisable(GL_STENCIL_TEST);
