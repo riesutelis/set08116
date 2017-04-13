@@ -103,15 +103,28 @@ layout(location = 0) out vec4 colour;
 
 void main() {
 // *********************************
+
+	vec3 p_normal = portal_normal;// / 2 + vec3(0.5, 0.5, 0.5);
+	vec3 p_pos = portal_pos / 2 + vec3(0.5, 0.5, 0.5);
 	// Calculate the cutoff point on the z axis
-	vec3 planeV = gl_FragCoord.xyz - portal_pos;
-	float z_cutoff = (-1.0 * (portal_normal.x * planeV.x) - (portal_normal.y * planeV.y)) / portal_normal.z;
+	float z_cutoff = p_pos.z - ((p_normal.x * (gl_FragCoord.x / 1280.0 - p_pos.x) + p_normal.y * (gl_FragCoord.y / 720.0 - p_pos.y)) / p_normal.z);
+//	colour = vec4(z_cutoff * 10.0 - 10.0, 0.0, 0.0, 1.0);
+	colour = vec4(z_cutoff * 10.0 - 10.0, 0.0, 0.0, 1.0);
 
 	// Discard the fragment if it's closer than the cutoff point
-	if (position.z < z_cutoff)
-		discard;
-
-
+	if (gl_FragCoord.z < z_cutoff)
+		colour = vec4(1.0, 0.0, 0.0, 1.0);
+	else
+		colour = vec4(0.0, 0.0, 1.0, 1.0);
+//		discard;
+		
+	// Debug stuff
+//	gl_FragDepth = z_cutoff;
+//	colour = vec4(gl_FragCoord.x / 1280.0, gl_FragCoord.y / 720.0, 0.0, 1.0);
+//	colour.a = 1.0;
+		
+		/*
+		
 	// Calculate shade factor
 	float shade_factor = calculate_shadow(shadow_map, light_space_pos);
 
@@ -146,5 +159,6 @@ void main() {
 	colour *= shade_factor;
     //	colour = vec4(log2(colour.r), log2(colour.g), log2(colour.b), 1.0);
 	colour.a = 1.0;
+	*/
     // *********************************
 }

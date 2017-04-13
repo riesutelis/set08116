@@ -82,7 +82,7 @@ directional_light light;
 vector<point_light> points;
 vector<spot_light> spots;
 
-pair<mesh, mesh> portals;
+pair<turbo_mesh, turbo_mesh> portals;
 frame_buffer first_portal_pass;
 map<string, turbo_mesh> meshes1;
 
@@ -237,7 +237,7 @@ void render_scene(mat4 lightProjectionMat)
 		turbo_mesh m = e.second;
 		M = m.get_hierarchical_transform_matrix();
 
-		// Calculate MVP using M that is transformed to be seen through the portal
+		// Calculate MVP
 		auto MVP = PV * M;
 
 		// Pass uniforms to shaders
@@ -283,6 +283,8 @@ void render_portal(mat4 offsetMatrix, mat4 lightProjectionMat, vec3 portal_pos, 
 {
 	mat4 M;
 	mat4 PV = calculatePV() * offsetMatrix;
+
+
 	renderer::bind(portal_eff);
 	for (auto &e : meshes)
 	{
@@ -325,10 +327,12 @@ void render_portal(mat4 offsetMatrix, mat4 lightProjectionMat, vec3 portal_pos, 
 		glUniform3fv(portal_eff.get_uniform_location("eye_pos"), 1, value_ptr(eye_pos()));
 		renderer::bind(shadows[1].buffer->get_depth(), 1);
 		glUniform1i(portal_eff.get_uniform_location("shadow_map"), 1);
-	//	glUniform3fv(portal_eff.get_uniform_location("portal_pos"), 1, value_ptr(vec3(PV * vec4(portal_pos, 1.0))));
-	//	glUniform3fv(portal_eff.get_uniform_location("portal_normal"), 1, value_ptr(vec3(PV * vec4(portal_normal, 1.0))));
-		glUniform3fv(portal_eff.get_uniform_location("portal_pos"), 1, value_ptr(vec3(PV * portals.first.get_transform().get_transform_matrix() * vec4(portal_pos, 1.0))));
-		glUniform3fv(portal_eff.get_uniform_location("portal_normal"), 1, value_ptr(vec3(PV * portals.first.get_transform().get_transform_matrix() * vec4(portal_normal, 1.0))));
+		vec4 pp = PV * vec4(portal_pos, 1.0);
+		pp = pp / pp.w;
+		vec4 pn = PV * vec4(portal_normal, 1.0);
+		pn = pn / pn.w;
+		glUniform3fv(portal_eff.get_uniform_location("portal_pos"), 1, value_ptr(vec3(pp)));
+		glUniform3fv(portal_eff.get_uniform_location("portal_normal"), 1, value_ptr(vec3(pn)));
 
 		renderer::render(m);
 	}
@@ -340,10 +344,10 @@ void render_portal(mat4 offsetMatrix, mat4 lightProjectionMat, vec3 portal_pos, 
 bool load_content()
 {
 	// setting up the portals
-	portals.first = mesh(geometry_builder::create_disk(40, vec2(4.0f, 2.5f)));
+	portals.first = turbo_mesh(geometry_builder::create_disk(40, vec2(4.0f, 2.5f)));
 	portals.first.get_transform().position = vec3(-10.0, 4.0, 10.0);
 	//portals.first.get_transform().orientation = vec3(quarter_pi<float>() * 3.5, 0.0, half_pi<float>());
-	portals.second = mesh(geometry_builder::create_disk(40, vec2(4.0f, 2.5f)));
+	portals.second = turbo_mesh(geometry_builder::create_disk(40, vec2(4.0f, 2.5f)));
 	portals.second.get_transform().position = vec3(15.0, 4.0, -15.0);
 	//portals.second.get_transform().orientation = vec3(half_pi<float>(), 0.0, half_pi<float>());
 
@@ -351,10 +355,12 @@ bool load_content()
 	meshes1["portal1"] = turbo_mesh(geometry_builder::create_disk(40, vec2(6.0f, 3.0f)));
 	meshes1["portal1"].get_transform().position = vec3(-10.0, 4.0, 10.0);
 	meshes1["portal1"].get_transform().orientation = vec3(half_pi<float>(), 0.0, half_pi<float>());
+	meshes1["portal1"].set_parent(&portals.first);
 	meshes1["portal2"] = turbo_mesh(geometry_builder::create_disk(40, vec2(6.0f, 3.0f)));
 	meshes1["portal2"].get_transform().position = vec3(15.0, 4.0, -15.0);
 	meshes1["portal2"].get_transform().orientation = vec3(half_pi<float>(), 0.0, half_pi<float>());
-
+	meshes1["portal2"].set_parent(&portals.second);
+	
 
 
 
@@ -666,14 +672,13 @@ bool render()
 	//####################################################################################################################################
 
 
-
+	
 
 	// Render the scene 
 	renderer::set_render_target();
-	render_scene(lightProjectionMat);
+//	render_scene(lightProjectionMat);
 
-
-
+	
 
 	// Mark out portals in the stencil buffer //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	// Enables stencil buffer editing 
@@ -695,14 +700,17 @@ bool render()
 	renderer::set_render_target();
 	// Render image through first portal
 	glStencilFunc(GL_EQUAL, 1, 0xFF);
+	glStencilFunc(GL_ALWAYS, 1, 0xFF);/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	mat4 offset = inverse(portals.second.get_transform().get_transform_matrix()) * portals.first.get_transform().get_transform_matrix();
-	render_portal(offset, lightProjectionMat, portals.first.get_transform().position, vec3(0.0f, 1.0f, 0.0f) * meshes1["portal1"].get_transform().orientation);
-
+	render_portal(offset, lightProjectionMat, portals.first.get_transform().position, rotate(meshes1["portal1"].get_transform().orientation, vec3(0.0f, 1.0f, 0.0f)));
+	//render_portal(offset, lightProjectionMat, portals.first.get_transform().position, meshes1["portal1"].get_transform().get_transform_matrix() * vec4(0.0f, 1.0f, 0.0f, 1.0f));
+	/*
+	cout << rotate(meshes1["portal1"].get_transform().orientation, vec3(0.0f, 1.0f, 0.0f)).x << " " << rotate(meshes1["portal1"].get_transform().orientation, vec3(0.0f, 1.0f, 0.0f)).y << " " << rotate(meshes1["portal1"].get_transform().orientation, vec3(0.0f, 1.0f, 0.0f)).z << endl;
 	// Render image through second portal
 	glStencilFunc(GL_EQUAL, 2, 0xFF);
 	offset = inverse(portals.first.get_transform().get_transform_matrix()) * portals.second.get_transform().get_transform_matrix();
-	render_portal(offset, lightProjectionMat, portals.second.get_transform().position, vec3(0.0f, 1.0f, 0.0f) * meshes1["portal2"].get_transform().orientation);
-
+	render_portal(offset, lightProjectionMat, portals.second.get_transform().position, rotate(meshes1["portal2"].get_transform().orientation, vec3(0.0f, 1.0f, 0.0f)));
+	*/
 
 	// Disable stencil testing
 	glDisable(GL_STENCIL_TEST);
