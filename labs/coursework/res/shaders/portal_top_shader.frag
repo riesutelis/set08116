@@ -84,6 +84,8 @@ uniform sampler2DShadow shadow_map;
 uniform vec3 portal_pos;
 // Portal normal
 uniform vec3 portal_normal;
+// Offset matrix
+uniform mat4 offset;
 
 // Incoming position
 layout(location = 0) in vec3 position;
@@ -107,23 +109,30 @@ void main() {
 	vec3 p_normal = portal_normal;// / 2 + vec3(0.5, 0.5, 0.5);
 	vec3 p_pos = portal_pos / 2 + vec3(0.5, 0.5, 0.5);
 	// Calculate the cutoff point on the z axis
-	float z_cutoff = p_pos.z - ((p_normal.x * (gl_FragCoord.x / 1280.0 - p_pos.x) + p_normal.y * (gl_FragCoord.y / 720.0 - p_pos.y)) / p_normal.z);
+//	float z_cutoff = p_pos.z - ((p_normal.x * (position.x - p_pos.x) + p_normal.y * (position.y - p_pos.y)) / p_normal.z);
 //	colour = vec4(z_cutoff * 10.0 - 10.0, 0.0, 0.0, 1.0);
-	colour = vec4(z_cutoff * 10.0 - 10.0, 0.0, 0.0, 1.0);
-
-	// Discard the fragment if it's closer than the cutoff point
-	if (gl_FragCoord.z < z_cutoff)
-		colour = vec4(1.0, 0.0, 0.0, 1.0);
+//	colour = vec4(z_cutoff * 10.0 - 10.0, 0.0, 0.0, 1.0);
+	if (dot(eye_pos - portal_pos, portal_normal) < 0)
+	{
+		if (dot(portal_normal, ((offset * vec4(portal_pos, 1.0)).xyz - position)) > 0)
+			discard;
+	}
 	else
-		colour = vec4(0.0, 0.0, 1.0, 1.0);
-//		discard;
+	{
+		if (dot(portal_normal * -1, ((offset * vec4(portal_pos, 1.0)).xyz - position)) > 0)
+			discard;
+	}
 		
+	// Discard the fragment if it's closer than the cutoff point
+//	if (position.z < z_cutoff)
+//		discard;
+	
 	// Debug stuff
 //	gl_FragDepth = z_cutoff;
 //	colour = vec4(gl_FragCoord.x / 1280.0, gl_FragCoord.y / 720.0, 0.0, 1.0);
 //	colour.a = 1.0;
 		
-		/*
+		
 		
 	// Calculate shade factor
 	float shade_factor = calculate_shadow(shadow_map, light_space_pos);
@@ -151,7 +160,7 @@ void main() {
 
 
 	//	tex_colour *= tex_colour;
-	colour = calculate_directional(light, mat, new_normal, view_dir, tex_colour);
+	colour += calculate_directional(light, mat, new_normal, view_dir, tex_colour);
     for (int i = 0; i < pn; i++)
 		colour += calculate_point(points[i], mat, position, new_normal, view_dir, tex_colour);
     for (int i = 0; i < sn; i++)
@@ -159,6 +168,6 @@ void main() {
 	colour *= shade_factor;
     //	colour = vec4(log2(colour.r), log2(colour.g), log2(colour.b), 1.0);
 	colour.a = 1.0;
-	*/
+	
     // *********************************
 }

@@ -327,12 +327,9 @@ void render_portal(mat4 offsetMatrix, mat4 lightProjectionMat, vec3 portal_pos, 
 		glUniform3fv(portal_eff.get_uniform_location("eye_pos"), 1, value_ptr(eye_pos()));
 		renderer::bind(shadows[1].buffer->get_depth(), 1);
 		glUniform1i(portal_eff.get_uniform_location("shadow_map"), 1);
-		vec4 pp = PV * vec4(portal_pos, 1.0);
-		pp = pp / pp.w;
-		vec4 pn = PV * vec4(portal_normal, 1.0);
-		pn = pn / pn.w;
-		glUniform3fv(portal_eff.get_uniform_location("portal_pos"), 1, value_ptr(vec3(pp)));
-		glUniform3fv(portal_eff.get_uniform_location("portal_normal"), 1, value_ptr(vec3(pn)));
+		glUniform3fv(portal_eff.get_uniform_location("portal_pos"), 1, value_ptr(portal_pos));
+		glUniform3fv(portal_eff.get_uniform_location("portal_normal"), 1, value_ptr(portal_normal));
+		glUniformMatrix4fv(portal_eff.get_uniform_location("offset"), 1, GL_FALSE, value_ptr(inverse(offsetMatrix)));
 
 		renderer::render(m);
 	}
@@ -676,7 +673,7 @@ bool render()
 
 	// Render the scene 
 	renderer::set_render_target();
-//	render_scene(lightProjectionMat);
+	render_scene(lightProjectionMat);
 
 	
 
@@ -700,17 +697,17 @@ bool render()
 	renderer::set_render_target();
 	// Render image through first portal
 	glStencilFunc(GL_EQUAL, 1, 0xFF);
-	glStencilFunc(GL_ALWAYS, 1, 0xFF);/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	//glStencilFunc(GL_ALWAYS, 1, 0xFF);/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	mat4 offset = inverse(portals.second.get_transform().get_transform_matrix()) * portals.first.get_transform().get_transform_matrix();
 	render_portal(offset, lightProjectionMat, portals.first.get_transform().position, rotate(meshes1["portal1"].get_transform().orientation, vec3(0.0f, 1.0f, 0.0f)));
 	//render_portal(offset, lightProjectionMat, portals.first.get_transform().position, meshes1["portal1"].get_transform().get_transform_matrix() * vec4(0.0f, 1.0f, 0.0f, 1.0f));
-	/*
-	cout << rotate(meshes1["portal1"].get_transform().orientation, vec3(0.0f, 1.0f, 0.0f)).x << " " << rotate(meshes1["portal1"].get_transform().orientation, vec3(0.0f, 1.0f, 0.0f)).y << " " << rotate(meshes1["portal1"].get_transform().orientation, vec3(0.0f, 1.0f, 0.0f)).z << endl;
+	
+	//cout << rotate(meshes1["portal1"].get_transform().orientation, vec3(0.0f, 1.0f, 0.0f)).x << " " << rotate(meshes1["portal1"].get_transform().orientation, vec3(0.0f, 1.0f, 0.0f)).y << " " << rotate(meshes1["portal1"].get_transform().orientation, vec3(0.0f, 1.0f, 0.0f)).z << endl;
 	// Render image through second portal
 	glStencilFunc(GL_EQUAL, 2, 0xFF);
 	offset = inverse(portals.first.get_transform().get_transform_matrix()) * portals.second.get_transform().get_transform_matrix();
 	render_portal(offset, lightProjectionMat, portals.second.get_transform().position, rotate(meshes1["portal2"].get_transform().orientation, vec3(0.0f, 1.0f, 0.0f)));
-	*/
+	
 
 	// Disable stencil testing
 	glDisable(GL_STENCIL_TEST);
