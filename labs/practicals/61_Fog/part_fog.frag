@@ -1,3 +1,5 @@
+#version 440
+
 // Types of fog
 #ifndef FOG_TYPES
 #define FOG_TYPES
@@ -18,17 +20,21 @@ float calculate_fog(in float fog_coord, in vec4 fog_colour, in float fog_start, 
   } else if (fog_type == FOG_EXP) {
     // *********************************
     // Exponential fog
-
+	result = exp(-fog_density * fog_coord);
     // *********************************
   } else if (fog_type == FOG_EXP2) {
     // *********************************
     // Exponential squared fog
-
+	result = exp(-pow(fog_density * fog_coord, 2.0));
     // *********************************
   }
   // *********************************
   // Result is 1 minus result clamped to 1.0 to 0.0
-
+  result = 1 - result;
+  if (result > 1.0)
+	result = 1.0;
+  if (result < 0.0)
+	result = 0.0;
   // *********************************
   return result;
 }
