@@ -65,10 +65,13 @@ geometry geom;
 effect eff;
 effect portal_eff;
 effect shadow_eff;
+effect colour_eff;
 map<string, turbo_mesh> meshes;
 map<string, texture> texs;
 map<string, texture> normal_maps;
 vector<shadow_map> shadows;
+
+bool portal_wobble = false;
 
 enum cam_choice { free0, target0 };
 target_camera target_cam;
@@ -83,8 +86,9 @@ vector<point_light> points;
 vector<spot_light> spots;
 
 pair<turbo_mesh, turbo_mesh> portals;
-frame_buffer first_portal_pass;
+frame_buffer frame;
 map<string, turbo_mesh> meshes1;
+geometry screen_quad;
 
 
 
@@ -105,10 +109,13 @@ bool initialise()
 {
 	// Set input mode - hide the cursor
 	glfwSetInputMode(renderer::get_window(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+	
 	// Capture initial mouse position
 	glfwGetCursorPos(renderer::get_window(), &cursor_x, &cursor_y);
 
-	first_portal_pass = frame_buffer(renderer::get_screen_width(), renderer::get_screen_height());
+	frame = frame_buffer(renderer::get_screen_width(), renderer::get_screen_height());
+
+
 	return true;
 }
 
@@ -281,6 +288,14 @@ void render_scene(mat4 lightProjectionMat)
 // Renders the meshes stored in the 'meshes' map using the main effect 'eff'
 void render_portal(mat4 offsetMatrix, mat4 lightProjectionMat, vec3 portal_pos, vec3 portal_normal)
 {
+	if (portal_wobble)
+	{
+		uniform_real_distribution<float> dist(-0.005f, 0.005f);
+		offsetMatrix = offsetMatrix * rotate(mat4(1.0), dist(ran), vec3(0.0, 1.0, 0.0));
+		offsetMatrix = offsetMatrix * rotate(mat4(1.0), dist(ran), vec3(1.0, 0.0, 0.0));
+		offsetMatrix = offsetMatrix * rotate(mat4(1.0), dist(ran), vec3(0.0, 0.0, 1.0));
+	}
+	
 	mat4 M;
 	mat4 PV = calculatePV() * offsetMatrix;
 
@@ -340,6 +355,18 @@ void render_portal(mat4 offsetMatrix, mat4 lightProjectionMat, vec3 portal_pos, 
 
 bool load_content()
 {
+
+	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, frame.get_buffer());
+
+
+	vector<vec3> positions{ vec3(-1.0f, -1.0f, 0.0f), vec3(1.0f, -1.0f, 0.0f), vec3(-1.0f, 1.0f, 0.0f),
+		vec3(1.0f, 1.0f, 0.0f) };
+	vector<vec2> tex_coords{ vec2(0.0, 0.0), vec2(1.0f, 0.0f), vec2(0.0f, 1.0f), vec2(1.0f, 1.0f) };
+	screen_quad.set_type(GL_TRIANGLE_STRIP);
+	screen_quad.add_buffer(positions, BUFFER_INDEXES::POSITION_BUFFER);
+	screen_quad.add_buffer(tex_coords, BUFFER_INDEXES::TEXTURE_COORDS_0);
+
+
 	// setting up the portals
 	portals.first = turbo_mesh(geometry_builder::create_disk(40, vec2(4.0f, 2.5f)));
 	portals.first.get_transform().position = vec3(-10.0, 4.0, 10.0);
@@ -530,10 +557,14 @@ bool load_content()
 
 	shadow_eff.add_shader("shaders/shadow_depth.vert", GL_VERTEX_SHADER);
 
+	colour_eff.add_shader("shaders/vert_shader.vert", GL_VERTEX_SHADER);
+	colour_eff.add_shader("shaders/colour_correction.frag", GL_FRAGMENT_SHADER);
+	
 	// Build effect
 	eff.build();
 	shadow_eff.build();
 	portal_eff.build();
+	colour_eff.build();
 	
 	// Set target camera
 	target_cam.set_position(vec3(0.0f, 1.0f, 50.0f));
@@ -563,6 +594,12 @@ bool update(float delta_time)
 		shadows[i].light_dir = spots[i].get_direction();
 	}
 
+
+
+
+	// Enable/disable portal wobble
+	if (glfwGetKey(renderer::get_window(), GLFW_KEY_0))
+		portal_wobble = !portal_wobble;
 
 
 
@@ -673,9 +710,12 @@ bool render()
 
 	// Render the scene 
 	renderer::set_render_target();
+	renderer::clear();
 	render_scene(lightProjectionMat);
 
 	
+
+
 
 	// Mark out portals in the stencil buffer //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	// Enables stencil buffer editing 
@@ -691,10 +731,10 @@ bool render()
 	glClear(GL_DEPTH_BUFFER_BIT);
 	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+	
 
 
-
-	renderer::set_render_target();
+	//renderer::set_render_target();
 	// Render image through first portal
 	glStencilFunc(GL_EQUAL, 1, 0xFF);
 	//glStencilFunc(GL_ALWAYS, 1, 0xFF);/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -702,7 +742,6 @@ bool render()
 	render_portal(offset, lightProjectionMat, portals.first.get_transform().position, rotate(meshes1["portal1"].get_transform().orientation, vec3(0.0f, 1.0f, 0.0f)));
 	//render_portal(offset, lightProjectionMat, portals.first.get_transform().position, meshes1["portal1"].get_transform().get_transform_matrix() * vec4(0.0f, 1.0f, 0.0f, 1.0f));
 	
-	//cout << rotate(meshes1["portal1"].get_transform().orientation, vec3(0.0f, 1.0f, 0.0f)).x << " " << rotate(meshes1["portal1"].get_transform().orientation, vec3(0.0f, 1.0f, 0.0f)).y << " " << rotate(meshes1["portal1"].get_transform().orientation, vec3(0.0f, 1.0f, 0.0f)).z << endl;
 	// Render image through second portal
 	glStencilFunc(GL_EQUAL, 2, 0xFF);
 	offset = inverse(portals.first.get_transform().get_transform_matrix()) * portals.second.get_transform().get_transform_matrix();
@@ -711,7 +750,18 @@ bool render()
 
 	// Disable stencil testing
 	glDisable(GL_STENCIL_TEST);
-	
+
+	/*
+	renderer::set_render_target();
+	renderer::bind(colour_eff);
+	glUniformMatrix4fv(eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(mat4(1.0)));
+	renderer::bind(frame.get_frame(), 0);
+	glUniform1i(colour_eff.get_uniform_location("tex"), 0);
+	glUniform1f(colour_eff.get_uniform_location("hue_offset"), 0.0f);
+	glUniform1f(colour_eff.get_uniform_location("saturation"), 1.0f);
+	glUniform1f(colour_eff.get_uniform_location("brightness"), 1.0f);
+	renderer::render(screen_quad);
+	*/
 	return true;
 }
 
