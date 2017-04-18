@@ -86,11 +86,16 @@ vector<point_light> points;
 vector<spot_light> spots;
 
 pair<turbo_mesh, turbo_mesh> portals;
-frame_buffer frame;
+frame_buffer fr;
 map<string, turbo_mesh> meshes1;
 geometry screen_quad;
 
-
+// FBO texture
+GLuint colour_tex;
+// FBO depth-stencil buffer
+GLuint depth_stencil_buffer;
+// FBO
+GLuint frame;
 
 default_random_engine ran;
 // Time accumulator
@@ -113,7 +118,7 @@ bool initialise()
 	// Capture initial mouse position
 	glfwGetCursorPos(renderer::get_window(), &cursor_x, &cursor_y);
 
-	frame = frame_buffer(renderer::get_screen_width(), renderer::get_screen_height());
+	//frame = frame_buffer(renderer::get_screen_width(), renderer::get_screen_height());
 
 
 	return true;
@@ -355,8 +360,46 @@ void render_portal(mat4 offsetMatrix, mat4 lightProjectionMat, vec3 portal_pos, 
 
 bool load_content()
 {
-
-	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, frame.get_buffer());
+	// RGBA8 2D texture, D24S8 depth/stencil texture
+	glGenTextures(1, &colour_tex);
+	glBindTexture(GL_TEXTURE_2D, colour_tex);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+	// NULL means reserve texture memory, but texels are undefined
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, renderer::get_screen_width(), renderer::get_screen_height(), 0, GL_BGRA, GL_UNSIGNED_BYTE, NULL);
+	// Reserve memory for other mipmaps levels
+	glGenerateMipmapEXT(GL_TEXTURE_2D);
+	//-------------------------
+	glGenFramebuffersEXT(1, &frame);
+	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, frame);
+	//Attach 2D texture to this FBO
+	glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT0_EXT, GL_TEXTURE_2D, colour_tex, 0);
+	//-------------------------
+	// generate the depth-stencil buffer
+	glGenRenderbuffersEXT(1, &depth_stencil_buffer);
+	glBindRenderbufferEXT(GL_RENDERBUFFER_EXT, depth_stencil_buffer);
+	glRenderbufferStorageEXT(GL_RENDERBUFFER_EXT, GL_DEPTH24_STENCIL8_EXT, renderer::get_screen_width(), renderer::get_screen_height());
+	//-------------------------
+	//Attach depth buffer to FBO
+	glFramebufferRenderbufferEXT(GL_FRAMEBUFFER_EXT, GL_DEPTH_ATTACHMENT_EXT, GL_RENDERBUFFER_EXT, depth_stencil_buffer);
+	//Also attach as a stencil
+	glFramebufferRenderbufferEXT(GL_FRAMEBUFFER_EXT, GL_STENCIL_ATTACHMENT_EXT, GL_RENDERBUFFER_EXT, depth_stencil_buffer);
+	//-------------------------
+	//Does the GPU support current FBO configuration?
+	GLenum status;
+	status = glCheckFramebufferStatusEXT(GL_FRAMEBUFFER_EXT);
+	switch (status)
+	{
+	case GL_FRAMEBUFFER_COMPLETE_EXT:
+		cout << "Frame buffer initialized" << endl;
+		break;
+	default:
+		cout << "Frame buffer not complete" << endl;
+	}
+	//-------------------------
+	
 
 
 	vector<vec3> positions{ vec3(-1.0f, -1.0f, 0.0f), vec3(1.0f, -1.0f, 0.0f), vec3(-1.0f, 1.0f, 0.0f),
@@ -709,8 +752,11 @@ bool render()
 	
 
 	// Render the scene 
-	renderer::set_render_target();
-	renderer::clear();
+	//renderer::set_render_target();
+	//renderer::clear();
+
+	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, frame);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 	render_scene(lightProjectionMat);
 
 	
@@ -730,6 +776,7 @@ bool render()
 	// Clears the depth buffer
 	glClear(GL_DEPTH_BUFFER_BIT);
 	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 
 	
 
@@ -751,17 +798,18 @@ bool render()
 	// Disable stencil testing
 	glDisable(GL_STENCIL_TEST);
 
-	/*
+	
 	renderer::set_render_target();
 	renderer::bind(colour_eff);
 	glUniformMatrix4fv(eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(mat4(1.0)));
-	renderer::bind(frame.get_frame(), 0);
-	glUniform1i(colour_eff.get_uniform_location("tex"), 0);
+	//renderer::bind(fr.get_frame(), 0);
+	glBindTexture(GL_TEXTURE_2D, colour_tex);
+	glUniform1i(colour_eff.get_uniform_location("tex"), colour_tex);
 	glUniform1f(colour_eff.get_uniform_location("hue_offset"), 0.0f);
 	glUniform1f(colour_eff.get_uniform_location("saturation"), 1.0f);
 	glUniform1f(colour_eff.get_uniform_location("brightness"), 1.0f);
 	renderer::render(screen_quad);
-	*/
+	
 	return true;
 }
 
