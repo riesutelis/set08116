@@ -42,29 +42,21 @@ void main()
 	{
 		H = 0.0;
 	}
-	H = H / 60;
-	
+	H = H * 60;
+
 	float Y = 0.299 * cl.r + 0.587 * cl.g + 0.114 * cl.b;
 
-	float S;
-	if (Y == 0)
-		S = 0;
-	else
-		S = 1 - (mn / Y);
+	vec3 HCL = vec3(H, C, Y);
 
-	vec3 HSI = vec3(H, S, Y);
+	HCL.x = HCL.x + hue_offset;
+	HCL.y = clamp(HCL.y + saturation, 0.0, 1.0);
+	HCL.z = clamp(HCL.z + brightness, 0.0, 1.0);
 
-	HSI.x = HSI.x + hue_offset;
-	HSI.y = HSI.y * saturation;
-	HSI.z = HSI.z * brightness;
+	H = HCL.x / 60;
+	
+	float X = HCL.y * (1 - abs(mod(H, 2.0) - 1));
 
-
-	H = HSI.x * 60;
-	float Z = 1 - abs((mod(H, 2.0)) - 1.0);
-	C = (3 * HSI.z * HSI.y) / (1.0 + Z);
-	float X = C * Z;
-
-	if (HSI.z == 0)
+	if (HCL.z == 0)
 	{
 		cl = vec4(0.0, 0.0, 0.0, 1.0);
 	}
@@ -93,8 +85,8 @@ void main()
 		cl = vec4(C, 0.0, X, 1.0);
 	}
 
-	mn = HSI.z - C;
-	colour = vec4(cl.r + mn, cl.g + mn, cl.b +mn, 1.0);
+	mn = HCL.z - (0.3 * cl.r + 0.59 * cl.g + 0.11 * cl.b);
+	colour = vec4(cl.r + mn, cl.g + mn, cl.b + mn, 1.0);
 	
 	//colour = texture(tex, tex_coord);
 }

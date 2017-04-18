@@ -72,6 +72,12 @@ map<string, texture> normal_maps;
 vector<shadow_map> shadows;
 
 bool portal_wobble = false;
+// Hue offset for colour correction (0 to 360 degrees)
+float hue = 0;
+// Chroma (saturation) offset for colour correction
+float chroma = 0;
+// Luma (brightness) offset for colour correction
+float luma = 0;
 
 enum cam_choice { free0, target0 };
 target_camera target_cam;
@@ -644,6 +650,38 @@ bool update(float delta_time)
 	if (glfwGetKey(renderer::get_window(), GLFW_KEY_0))
 		portal_wobble = !portal_wobble;
 
+	// Hue+
+	if (glfwGetKey(renderer::get_window(), GLFW_KEY_KP_9))
+	{
+		hue += 15.0 * delta_time;
+		if (hue > 360.0)
+			hue = 0.0;
+	}
+
+	// Hue-
+	if (glfwGetKey(renderer::get_window(), GLFW_KEY_KP_8))
+	{
+		hue -= 15.0 * delta_time;
+		if (hue < -360.0)
+			hue = 0.0;
+	}
+
+	// Chroma+
+	if (glfwGetKey(renderer::get_window(), GLFW_KEY_KP_6))
+		chroma += 0.5 * delta_time;
+
+	// Chroma-
+	if (glfwGetKey(renderer::get_window(), GLFW_KEY_KP_5))
+		chroma -= 0.5 * delta_time;
+
+	// Luma+
+	if (glfwGetKey(renderer::get_window(), GLFW_KEY_KP_3))
+		luma += 0.5 * delta_time;
+
+	// Luma-
+	if (glfwGetKey(renderer::get_window(), GLFW_KEY_KP_2))
+		luma -= 0.5 * delta_time;
+
 
 
 
@@ -805,9 +843,9 @@ bool render()
 	//renderer::bind(fr.get_frame(), 0);
 	glBindTexture(GL_TEXTURE_2D, colour_tex);
 	glUniform1i(colour_eff.get_uniform_location("tex"), colour_tex);
-	glUniform1f(colour_eff.get_uniform_location("hue_offset"), 0.0f);
-	glUniform1f(colour_eff.get_uniform_location("saturation"), 1.0f);
-	glUniform1f(colour_eff.get_uniform_location("brightness"), 1.0f);
+	glUniform1f(colour_eff.get_uniform_location("hue_offset"), hue);
+	glUniform1f(colour_eff.get_uniform_location("saturation"), chroma);
+	glUniform1f(colour_eff.get_uniform_location("brightness"), luma);
 	renderer::render(screen_quad);
 	
 	return true;
