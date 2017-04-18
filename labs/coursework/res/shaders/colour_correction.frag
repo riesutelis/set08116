@@ -46,7 +46,11 @@ void main()
 
 	float Y = 0.299 * cl.r + 0.587 * cl.g + 0.114 * cl.b;
 
-	vec3 HCL = vec3(H, C, Y);
+	float S = 0.0;
+	if (Y != 0)
+		S = C / Y;
+
+	vec3 HCL = vec3(H, S, Y);
 
 	HCL.x = HCL.x + hue_offset;
 	HCL.y = clamp(HCL.y + saturation, 0.0, 1.0);
@@ -54,7 +58,9 @@ void main()
 
 	H = HCL.x / 60;
 	
-	float X = HCL.y * (1 - abs(mod(H, 2.0) - 1));
+	C = HCL.z * HCL.y;
+
+	float X = C * (1 - abs(mod(H, 2.0) - 1));
 
 	if (HCL.z == 0)
 	{
