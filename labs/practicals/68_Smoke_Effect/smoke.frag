@@ -3,8 +3,8 @@
 uniform sampler2D tex;
 
 in VertexData {
-  vec4 colour;
-  vec2 tex_coord;
+	vec4 colour;
+	vec2 tex_coord;
 };
 
 layout(location = 0) out vec4 colour_out;

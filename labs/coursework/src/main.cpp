@@ -2,6 +2,7 @@
 #include <graphics_framework.h>
 
 using namespace std;
+using namespace std::chrono;
 using namespace graphics_framework;
 using namespace glm;
 
@@ -61,6 +62,8 @@ effect portal_eff;
 effect shadow_eff;
 effect colour_eff;
 effect sky_eff;
+effect particle_eff;
+effect compute_eff;
 
 // Object containers
 geometry geom;
@@ -111,6 +114,19 @@ GLuint colour_tex;
 GLuint depth_stencil_buffer;
 // FBO
 GLuint frame;
+
+// Particle variables
+// Maximum number of particles
+const unsigned int MAX_PARTICLES = 2048;
+// position and velocity vectors
+vec4 positions[MAX_PARTICLES];
+vec4 velocitys[MAX_PARTICLES];
+vec4 original_positions[MAX_PARTICLES];
+float distances[MAX_PARTICLES];
+// Buffer IDs
+GLuint G_Position_buffer, G_Velocity_buffer, G_Original_pos_buffer, G_Distances_buffer;
+// Something
+GLuint vao;
 
 default_random_engine ran;
 // Time accumulators
@@ -433,7 +449,7 @@ bool load_content()
 	}
 
 
-	// Set up the screen quad
+	// Seting up the screen quad
 	{
 		vector<vec3> positions{ vec3(-1.0f, -1.0f, 0.0f), vec3(1.0f, -1.0f, 0.0f), vec3(-1.0f, 1.0f, 0.0f),	vec3(1.0f, 1.0f, 0.0f) };
 		vector<vec2> tex_coords{ vec2(0.0, 0.0), vec2(1.0f, 0.0f), vec2(0.0f, 1.0f), vec2(1.0f, 1.0f) };
@@ -443,7 +459,7 @@ bool load_content()
 	}
 
 
-	// setting up the portals
+	// Setting up the portals
 	{
 		portals.first = turbo_mesh(geometry_builder::create_disk(40, vec2(4.0f, 2.5f)));
 		portals.first.get_transform().position = vec3(-10.0, 4.0, 10.0);
@@ -461,6 +477,66 @@ bool load_content()
 		portal_meshes["portal2"].get_transform().orientation = vec3(half_pi<float>(), 0.0, half_pi<float>());
 		portal_meshes["portal2"].set_parent(&portals.second);
 	}
+
+
+	// Setting up particles
+	{
+		default_random_engine p_rand(duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count());
+		uniform_real_distribution<float> p_dist(-2.5f, 2.5f);
+		float r1;
+		float r2;
+		// Initilise particles//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+		for (unsigned int i = 0; i < MAX_PARTICLES; ++i)
+		{
+			r1 = p_dist(p_rand);
+			r2 = p_dist(p_rand);
+			if (r2 > 0.0f)
+				r2 = 4.0f;
+			else
+				r2 = -4.0f;
+			positions[i] = rotate(portal_meshes["portal1"].get_transform().orientation, vec4(r1, 0.0f, cos(r1 * half_pi<float>() / 2.5f) * r2, 0.0f)) + vec4(portals.first.get_transform().position, 0.0);
+			//positions[i] = vec4(r1, 0.0f, cos(r1 * half_pi<float>() / 2.5f) * r2, 0.0f);
+			original_positions[i] = positions[i];
+			r2 /= 4.0f;
+			//velocitys[i] = portal_meshes["portal1"].get_hierarchical_transform_matrix() * vec4(cos(r1 * half_pi<float>() / 2.5f) * r2, 0.0f, sin(r1 * half_pi<float>() / 2.5f) * -1.0f, 0.0f);
+			velocitys[i] = vec4(cos(r1 * half_pi<float>() / 2.5f) * r2, 0.0f, sin(r1 * half_pi<float>() / 2.5f) * -1.0f, 0.0f);
+			positions[i] = rotate(portal_meshes["portal1"].get_transform().orientation, vec4(cos(r1 * half_pi<float>() / 2.5f) * r2, 0.0f, sin(r1 * half_pi<float>() / 2.5f) * -1.0f, 0.0f)) + vec4(portals.first.get_transform().position, 0.0);
+			distances[i] = 0.0f;
+		}
+		// a useless vao, but we need it bound or we get errors.
+		glGenVertexArrays(1, &vao);
+		glBindVertexArray(vao);
+		// *********************************
+		//Generate Position Data buffer
+		glGenBuffers(1, &G_Position_buffer);
+		// Bind as GL_SHADER_STORAGE_BUFFER
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, G_Position_buffer);
+		// Send Data to GPU, use GL_DYNAMIC_DRAW
+		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(vec4) * MAX_PARTICLES, positions, GL_DYNAMIC_DRAW);
+		// Generate Velocity Data buffer
+		glGenBuffers(1, &G_Velocity_buffer);
+		// Bind as GL_SHADER_STORAGE_BUFFER
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, G_Velocity_buffer);
+		// Send Data to GPU, use GL_DYNAMIC_DRAW
+		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(vec4) * MAX_PARTICLES, velocitys, GL_DYNAMIC_DRAW);
+		// Generate original position Data buffer
+		glGenBuffers(1, &G_Original_pos_buffer);
+		// Bind as GL_SHADER_STORAGE_BUFFER
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, G_Original_pos_buffer);
+		// Send Data to GPU, use GL_DYNAMIC_DRAW
+		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(vec4) * MAX_PARTICLES, original_positions, GL_DYNAMIC_DRAW);
+		// Generate distance traveled Data buffer
+		glGenBuffers(1, &G_Distances_buffer);
+		// Bind as GL_SHADER_STORAGE_BUFFER
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, G_Distances_buffer);
+		// Send Data to GPU, use GL_DYNAMIC_DRAW
+		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(vec4) * MAX_PARTICLES, distances, GL_DYNAMIC_DRAW);
+		//Unbind
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+	}
+
+
+
 
 
 	// Materials
@@ -626,30 +702,40 @@ bool load_content()
 	
 
 	// Load in shaders
-	eff.add_shader("shaders/vert_shader.vert", GL_VERTEX_SHADER);
-	vector<string> frag_shaders{ "shaders/top_shader.frag", "shaders/directional.frag", "shaders/spot.frag", "shaders/point.frag", "shaders/shadow_index.frag" };
-	eff.add_shader(frag_shaders, GL_FRAGMENT_SHADER);
+	{
+		eff.add_shader("shaders/vert_shader.vert", GL_VERTEX_SHADER);
+		vector<string> frag_shaders{ "shaders/top_shader.frag", "shaders/directional.frag", "shaders/spot.frag", "shaders/point.frag", "shaders/shadow_index.frag" };
+		eff.add_shader(frag_shaders, GL_FRAGMENT_SHADER);
 
-	portal_eff.add_shader("shaders/vert_shader.vert", GL_VERTEX_SHADER);
-	vector<string> portal_frag_shaders{ "shaders/portal_top_shader.frag", "shaders/directional.frag", "shaders/spot.frag", "shaders/point.frag", "shaders/shadow_index.frag" };
-	portal_eff.add_shader(portal_frag_shaders, GL_FRAGMENT_SHADER);
+		portal_eff.add_shader("shaders/vert_shader.vert", GL_VERTEX_SHADER);
+		vector<string> portal_frag_shaders{ "shaders/portal_top_shader.frag", "shaders/directional.frag", "shaders/spot.frag", "shaders/point.frag", "shaders/shadow_index.frag" };
+		portal_eff.add_shader(portal_frag_shaders, GL_FRAGMENT_SHADER);
 
-	shadow_eff.add_shader("shaders/shadow_depth.vert", GL_VERTEX_SHADER);
+		shadow_eff.add_shader("shaders/shadow_depth.vert", GL_VERTEX_SHADER);
 
-	colour_eff.add_shader("shaders/simple.vert", GL_VERTEX_SHADER);
-	colour_eff.add_shader("shaders/colour_correction.frag", GL_FRAGMENT_SHADER);
+		colour_eff.add_shader("shaders/simple.vert", GL_VERTEX_SHADER);
+		colour_eff.add_shader("shaders/colour_correction.frag", GL_FRAGMENT_SHADER);
 
-	sky_eff.add_shader("shaders/skybox.vert", GL_VERTEX_SHADER);
-	sky_eff.add_shader("shaders/skybox.frag", GL_FRAGMENT_SHADER);
-	
+		sky_eff.add_shader("shaders/skybox.vert", GL_VERTEX_SHADER);
+		sky_eff.add_shader("shaders/skybox.frag", GL_FRAGMENT_SHADER);
 
-	// Build effect
-	eff.build();
-	shadow_eff.build();
-	portal_eff.build();
-	colour_eff.build();
-	sky_eff.build();
-	
+		particle_eff.add_shader("shaders/particle.vert", GL_VERTEX_SHADER);
+		particle_eff.add_shader("shaders/particle.frag", GL_FRAGMENT_SHADER);
+		particle_eff.add_shader("shaders/particle.geom", GL_GEOMETRY_SHADER);
+
+		compute_eff.add_shader("shaders/particle.comp", GL_COMPUTE_SHADER);
+
+
+		// Build effect
+		eff.build();
+		shadow_eff.build();
+		portal_eff.build();
+		colour_eff.build();
+		sky_eff.build();
+		particle_eff.build();
+		compute_eff.build();
+	}
+
 
 	// Set target camera
 	target_cam.set_position(vec3(0.0f, 1.0f, 50.0f));
@@ -694,6 +780,13 @@ bool update(float delta_time)
 		else if (i % 6 == 5)
 			shadows[i].light_dir = vec3(0.0f, 0.0f, -1.0f);
 	}
+
+
+
+	//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	renderer::bind(compute_eff);
+	glUniform1f(compute_eff.get_uniform_location("max_distance"), 1.0f);
+	glUniform1f(compute_eff.get_uniform_location("delta_time"), delta_time);
 
 
 
@@ -821,6 +914,13 @@ bool update(float delta_time)
 
 bool render()
 {
+	mat4 V;
+
+
+
+
+
+
 
 
 	// Render the shadow map ##############################################################################################################
@@ -837,7 +937,7 @@ bool render()
 
 	// Bind shadow shader
 	renderer::bind(shadow_eff);
-	auto V = shadows[1].get_view();
+	V = shadows[1].get_view();
 
 	// Render the meshes
 	for (auto &e : meshes) {
@@ -911,11 +1011,69 @@ bool render()
 	}
 	
 
+
+
+
+
+	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	// Compute the particles
+	// Bind Compute Shader
+	renderer::bind(compute_eff);
+	// Bind data as SSBO
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, G_Position_buffer);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, G_Velocity_buffer);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, G_Original_pos_buffer);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, G_Distances_buffer);
+	// Dispatch
+	glDispatchCompute(MAX_PARTICLES / 64, 1, 1);
+	// Sync, wait for completion
+	glMemoryBarrier(GL_ALL_BARRIER_BITS);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+	// Bind particle effect
+	renderer::bind(particle_eff);
+	// Create MV matrix
+	auto P = free_cam.get_projection();
+	V = free_cam.get_view(); //calculatePV() * inverse(P);
+							 // Set MV, and P matrix uniforms seperatly
+	glUniformMatrix4fv(particle_eff.get_uniform_location("MV"), 1, GL_FALSE, value_ptr(V));
+	glUniformMatrix4fv(particle_eff.get_uniform_location("P"), 1, GL_FALSE, value_ptr(P));
+	// Set point_size size uniform to .1f
+	glUniform1f(particle_eff.get_uniform_location("point_size"), 0.1f);
+
+
+	// Bind position buffer as GL_ARRAY_BUFFER
+	glBindBuffer(GL_ARRAY_BUFFER, G_Position_buffer);
+	// Setup vertex format
+
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 0, (void *)0);
+
+	// Enable Blending
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	// Disable Depth Mask
+//	glDepthMask(GL_FALSE);
+	// Render
+	glDrawArrays(GL_POINTS, 0, MAX_PARTICLES);
+	// Tidy up, enable depth mask
+//	glDepthMask(GL_TRUE);
+	// Disable Blend
+	glDisable(GL_BLEND);
+	// Unbind all arrays
+	glDisableVertexAttribArray(0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+	glUseProgram(0);
+
+
+
+
 	// Do postprocessing
 	{
 		renderer::set_render_target();
 		renderer::bind(colour_eff);
-		glUniformMatrix4fv(eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(mat4(1.0)));
+		glUniformMatrix4fv(colour_eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(mat4(1.0)));
 		//renderer::bind(fr.get_frame(), 0);
 		glBindTexture(GL_TEXTURE_2D, colour_tex);
 		glUniform1i(colour_eff.get_uniform_location("tex"), colour_tex);
@@ -924,6 +1082,8 @@ bool render()
 		glUniform1f(colour_eff.get_uniform_location("brightness"), luma);
 		renderer::render(screen_quad);
 	}
+
+
 
 	return true;
 }

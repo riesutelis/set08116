@@ -10,9 +10,11 @@ using namespace glm;
 const unsigned int MAX_PARTICLES = 4096;
 
 vec4 positions[MAX_PARTICLES];
+vec4 original_positions[MAX_PARTICLES];
 vec4 velocitys[MAX_PARTICLES];
+float distances[MAX_PARTICLES];
 
-GLuint G_Position_buffer, G_Velocity_buffer;
+GLuint G_Position_buffer, G_Velocity_buffer, G_Original_Pos_buffer, G_Distances_buffer;
 
 effect eff;
 effect compute_eff;
@@ -29,9 +31,11 @@ bool load_content() {
   tex = texture("textures/smoke.png");
 
   // Initilise particles
-  for (unsigned int i = 0; i < MAX_PARTICLES; ++i) {
+  for (unsigned int i = 0; i < MAX_PARTICLES; ++i)
+  {
     positions[i] = vec4(((2.0f * dist(rand)) - 1.0f) / 10.0f, 5.0 * dist(rand), 0.0f, 0.0f);
     velocitys[i] = vec4(0.0f, 0.1f + dist(rand), 0.0f, 0.0f);
+	distances[i] = 0.0f;
   }
   // Load in shaders
   eff.add_shader("68_Smoke_Effect/smoke.vert", GL_VERTEX_SHADER);
