@@ -221,7 +221,7 @@ void moveFreeCamera(float delta_time)
 
 
 // Draws a stencil mask for a single mesh
-void draw_stencil_mask(mesh m, int layer)
+void draw_stencil_mask(turbo_mesh m, int layer)
 {
 	// Enables stencil testing
 	glEnable(GL_STENCIL_TEST);
@@ -237,8 +237,8 @@ void draw_stencil_mask(mesh m, int layer)
 
 	// Binds shadow_eff because it only calculates position information for objects
 	renderer::bind(shadow_eff);
-	mat4 M = m.get_transform().get_transform_matrix();;
-	mat4 MVP = calculatePV() * M;
+	//mat4 M = m.get_transform().get_transform_matrix();;
+	mat4 MVP = calculatePV() * m.get_hierarchical_transform_matrix();
 	glUniformMatrix4fv(shadow_eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(MVP));
 	// Draw to stencil buffer regardless of facing
 	glDisable(GL_CULL_FACE);
@@ -306,7 +306,7 @@ void render_scene(mat4 lightProjectionMat)
 
 
 // Renders the meshes stored in the 'meshes' map using the main effect 'eff'
-void render_portal(mat4 offsetMatrix, mat4 lightProjectionMat, vec3 portal_pos, vec3 portal_normal)
+void render_portal(mat4 offsetMatrix, mat4 lightProjectionMat, vec3 portal_pos, vec3 portal_normal, vec3 other_portal_normal)
 {
 	if (portal_wobble)
 	{
@@ -315,9 +315,22 @@ void render_portal(mat4 offsetMatrix, mat4 lightProjectionMat, vec3 portal_pos, 
 		offsetMatrix = offsetMatrix * rotate(mat4(1.0), dist(ran), vec3(1.0, 0.0, 0.0));
 		offsetMatrix = offsetMatrix * rotate(mat4(1.0), dist(ran), vec3(0.0, 0.0, 1.0));
 	}
-	
-	mat4 M;
+
 	mat4 PV = calculatePV() * offsetMatrix;
+
+	skybox.get_transform().position = portal_pos;
+	glDisable(GL_DEPTH_TEST);
+	glDepthMask(GL_FALSE);
+	renderer::bind(sky_eff);
+	mat4 M = skybox.get_transform().get_transform_matrix();
+	mat4 MVP = PV * M;
+	glUniformMatrix4fv(sky_eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(MVP));
+	renderer::bind(cube_map, 0);
+	glUniform1i(sky_eff.get_uniform_location("cubemap"), 0);
+	renderer::render(skybox);
+	glEnable(GL_DEPTH_TEST);
+	glDepthMask(GL_TRUE);
+	
 
 
 	renderer::bind(portal_eff);
@@ -364,6 +377,7 @@ void render_portal(mat4 offsetMatrix, mat4 lightProjectionMat, vec3 portal_pos, 
 		glUniform1i(portal_eff.get_uniform_location("shadow_map"), 1);
 		glUniform3fv(portal_eff.get_uniform_location("portal_pos"), 1, value_ptr(portal_pos));
 		glUniform3fv(portal_eff.get_uniform_location("portal_normal"), 1, value_ptr(portal_normal));
+		glUniform3fv(portal_eff.get_uniform_location("other_portal_normal"), 1, value_ptr(other_portal_normal));
 		glUniformMatrix4fv(portal_eff.get_uniform_location("offset"), 1, GL_FALSE, value_ptr(inverse(offsetMatrix)));
 
 		renderer::render(m);
@@ -433,18 +447,17 @@ bool load_content()
 	{
 		portals.first = turbo_mesh(geometry_builder::create_disk(40, vec2(4.0f, 2.5f)));
 		portals.first.get_transform().position = vec3(-10.0, 4.0, 10.0);
-		//portals.first.get_transform().orientation = vec3(quarter_pi<float>() * 3.5, 0.0, half_pi<float>());
 		portals.second = turbo_mesh(geometry_builder::create_disk(40, vec2(4.0f, 2.5f)));
 		portals.second.get_transform().position = vec3(15.0, 4.0, -15.0);
-		//portals.second.get_transform().orientation = vec3(half_pi<float>(), 0.0, half_pi<float>());
+		portals.second.get_transform().orientation = vec3(0.0, quarter_pi<float>() / -2.0f, 0.0);
 
 		// Portal meshes are required to correctly draw portals on the stencil buffer
 		portal_meshes["portal1"] = turbo_mesh(geometry_builder::create_disk(40, vec2(6.0f, 3.0f)));
-		portal_meshes["portal1"].get_transform().position = vec3(-10.0, 4.0, 10.0);
+	//	portal_meshes["portal1"].get_transform().position = vec3(-10.0, 4.0, 10.0);
 		portal_meshes["portal1"].get_transform().orientation = vec3(half_pi<float>(), 0.0, half_pi<float>());
 		portal_meshes["portal1"].set_parent(&portals.first);
 		portal_meshes["portal2"] = turbo_mesh(geometry_builder::create_disk(40, vec2(6.0f, 3.0f)));
-		portal_meshes["portal2"].get_transform().position = vec3(15.0, 4.0, -15.0);
+	//	portal_meshes["portal2"].get_transform().position = vec3(15.0, 4.0, -15.0);
 		portal_meshes["portal2"].get_transform().orientation = vec3(half_pi<float>(), 0.0, half_pi<float>());
 		portal_meshes["portal2"].set_parent(&portals.second);
 	}
@@ -590,25 +603,27 @@ bool load_content()
 
 
 	// Load lights
+
+	light = directional_light(vec4(0.003f, 0.003f, 0.003f, 1.0f), vec4(0.2f, 0.1f, 0.2f, 1.0f), normalize(vec3(0.5f, -0.2f, 0.5f)));		// evening
+
+//	light = directional_light(vec4(0.0f, 0.0f, 0.0f, 1.0f), vec4(0.0f, 0.0f, 0.0f, 1.0f), normalize(vec3(0.6f, -1.0f, 0.3f)));				// No directional for debugging
+//	light = directional_light(vec4(1.0f, 1.0f, 1.0f, 1.0f), vec4(0.0f, 0.0f, 0.0f, 1.0f), normalize(vec3(0.6f, -1.0f, 0.3f)));				// full ambient for debugging
+
+	points.push_back(point_light(vec4(1.0f, 0.9f, 0.63f, 1.0f), vec3(25.0f, 11.5f, 18.0f), 0.0f, 0.01f, 0.01f));							// Lamppost0
+	points.push_back(point_light(vec4(1.0f, 0.9f, 0.63f, 1.0f), vec3(25.0f, 11.5f, 0.0f), 0.0f, 0.01f, 0.01f));								// Lamppost1
+
+	spots.push_back(spot_light(white, vec3(-16.5f, 14.3f, 5.0f), vec3(0.0f, -1.0f, 0.0f), 0.0f, 0.05f, 0.005f, 10.0f));						// spotlight0
+	//shadows.push_back(shadow_map(renderer::get_screen_width(), renderer::get_screen_height()));
+	spots.push_back(spot_light(white, vec3(0.0f, 0.4f, -1.0f), vec3(0.0f, 0.0f, -1.0f), 0.0f, 0.05f, 0.0f, 10.0f));							// flashlight
+	//shadows.push_back(shadow_map(renderer::get_screen_width(), renderer::get_screen_height()));
+
+	
+	// Initialize shadow maps
+	for (int i = 0; i < (spots.size() + points.size() * 6); i++)
 	{
-		light = directional_light(vec4(0.003f, 0.003f, 0.003f, 1.0f), vec4(0.2f, 0.08f, 0.06f, 1.0f), normalize(vec3(0.6f, -1.0f, 0.3f)));		// evening
-
-	//	light = directional_light(vec4(0.0f, 0.0f, 0.0f, 1.0f), vec4(0.0f, 0.0f, 0.0f, 1.0f), normalize(vec3(0.6f, -1.0f, 0.3f)));				// No directional for debugging
-	//	light = directional_light(vec4(1.0f, 1.0f, 1.0f, 1.0f), vec4(0.0f, 0.0f, 0.0f, 1.0f), normalize(vec3(0.6f, -1.0f, 0.3f)));				// full ambient for debugging
-
-		points.push_back(point_light(vec4(1.0f, 0.9f, 0.63f, 1.0f), vec3(25.0f, 11.5f, 18.0f), 0.0f, 0.01f, 0.01f));							// Lamppost0
-		points.push_back(point_light(vec4(1.0f, 0.9f, 0.63f, 1.0f), vec3(25.0f, 11.5f, 0.0f), 0.0f, 0.01f, 0.01f));								// Lamppost1
-
-		spots.push_back(spot_light(white, vec3(-16.5f, 14.3f, 5.0f), vec3(0.0f, -1.0f, 0.0f), 0.0f, 0.05f, 0.005f, 10.0f));						// spotlight0
-		shadows.push_back(shadow_map(renderer::get_screen_width(), renderer::get_screen_height()));
-		spots.push_back(spot_light(white, vec3(0.0f, 0.4f, -1.0f), vec3(0.0f, 0.0f, -1.0f), 0.0f, 0.05f, 0.0f, 10.0f));							// flashlight
 		shadows.push_back(shadow_map(renderer::get_screen_width(), renderer::get_screen_height()));
 	}
 	
-	
-	
-	// Colours
-	//vector<vec4> colours{ vec4(1.0f, 0.0f, 0.0f, 1.0f), vec4(1.0f, 0.0f, 0.0f, 1.0f), vec4(1.0f, 0.0f, 0.0f, 1.0f) };
 
 	// Load in shaders
 	eff.add_shader("shaders/vert_shader.vert", GL_VERTEX_SHADER);
@@ -658,10 +673,26 @@ bool update(float delta_time)
 {
 
 	// Assigns positions and directions of the lights to shadows
-	for (int i = 0; i < shadows.size(); i++)
+	for (int i = 0; i < spots.size(); i++)
 	{
 		shadows[i].light_position = spots[i].get_position();
 		shadows[i].light_dir = spots[i].get_direction();
+	}
+	for (int i = spots.size(); i < shadows.size(); i++)
+	{
+		shadows[i].light_position = points[i].get_position();
+		if (i % 6 == 0)
+			shadows[i].light_dir = vec3(1.0f, 0.0f, 0.0f);
+		else if (i % 6 == 1)
+			shadows[i].light_dir = vec3(-1.0f, 0.0f, 0.0f);
+		else if (i % 6 == 2)
+			shadows[i].light_dir = vec3(0.0f, 1.0f, 0.0f);
+		else if (i % 6 == 3)
+			shadows[i].light_dir = vec3(0.0f, -1.0f, 0.0f);
+		else if (i % 6 == 4)
+			shadows[i].light_dir = vec3(0.0f, 0.0f, 1.0f);
+		else if (i % 6 == 5)
+			shadows[i].light_dir = vec3(0.0f, 0.0f, -1.0f);
 	}
 
 
@@ -730,7 +761,7 @@ bool update(float delta_time)
 
 
 
-	// Movement for the thing----------------------------------------------------------------------------------------------------------------------------------
+	// Movement for the thing
 	{
 	uniform_real_distribution<float> dist(-0.4f, 0.4f);
 	dev_dx += dist(ran);
@@ -780,7 +811,7 @@ bool update(float delta_time)
 		break;
 	}
 
-
+	// Update skybox position
 	skybox.get_transform().position = eye_pos();
 
 	// Display frames per second in the console
@@ -859,19 +890,21 @@ bool render()
 		///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	}
 
-
+	
 	// Render portals
 	{
+		vec3 portal1_normal = normalize(vec3(portal_meshes["portal1"].get_hierarchical_transform_matrix() * vec4(0.0, 1.0, 0.0, 0.0)));
+		vec3 portal2_normal = normalize(vec3(portal_meshes["portal2"].get_hierarchical_transform_matrix() * vec4(0.0, 1.0, 0.0, 0.0)));
 		// Render image through first portal
 		glStencilFunc(GL_EQUAL, 1, 0xFF);
 		mat4 offset = inverse(portals.second.get_transform().get_transform_matrix()) * portals.first.get_transform().get_transform_matrix();
-		render_portal(offset, lightProjectionMat, portals.first.get_transform().position, rotate(portal_meshes["portal1"].get_transform().orientation, vec3(0.0f, 1.0f, 0.0f)));
-
+		render_portal(offset, lightProjectionMat, portals.first.get_transform().position, portal1_normal, portal2_normal);
+		
 		// Render image through second portal
 		glStencilFunc(GL_EQUAL, 2, 0xFF);
 		offset = inverse(portals.first.get_transform().get_transform_matrix()) * portals.second.get_transform().get_transform_matrix();
-		render_portal(offset, lightProjectionMat, portals.second.get_transform().position, rotate(portal_meshes["portal2"].get_transform().orientation, vec3(0.0f, 1.0f, 0.0f)));
-
+		render_portal(offset, lightProjectionMat, portals.second.get_transform().position, portal2_normal, portal1_normal);
+		
 
 		// Disable stencil testing
 		glDisable(GL_STENCIL_TEST);

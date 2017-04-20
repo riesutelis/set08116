@@ -84,6 +84,8 @@ uniform sampler2DShadow shadow_map;
 uniform vec3 portal_pos;
 // Portal normal
 uniform vec3 portal_normal;
+// Portal normal
+uniform vec3 other_portal_normal;
 // Offset matrix
 uniform mat4 offset;
 
@@ -107,19 +109,19 @@ void main() {
 // *********************************
 
 	vec3 p_normal = portal_normal;// / 2 + vec3(0.5, 0.5, 0.5);
-	vec3 p_pos = portal_pos / 2 + vec3(0.5, 0.5, 0.5);
+	vec3 p_pos = portal_pos;// / 2 + vec3(0.5, 0.5, 0.5);
 	// Calculate the cutoff point on the z axis
 //	float z_cutoff = p_pos.z - ((p_normal.x * (position.x - p_pos.x) + p_normal.y * (position.y - p_pos.y)) / p_normal.z);
 //	colour = vec4(z_cutoff * 10.0 - 10.0, 0.0, 0.0, 1.0);
 //	colour = vec4(z_cutoff * 10.0 - 10.0, 0.0, 0.0, 1.0);
 	if (dot(eye_pos - portal_pos, portal_normal) < 0)
 	{
-		if (dot(portal_normal, ((offset * vec4(portal_pos, 1.0)).xyz - position)) > 0)
+		if (dot(other_portal_normal, ((offset * vec4(portal_pos, 1.0)).xyz - position)) > 0)
 			discard;
 	}
 	else
 	{
-		if (dot(portal_normal * -1, ((offset * vec4(portal_pos, 1.0)).xyz - position)) > 0)
+		if (dot(other_portal_normal * -1, ((offset * vec4(portal_pos, 1.0)).xyz - position)) > 0)
 			discard;
 	}
 		

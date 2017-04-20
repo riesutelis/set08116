@@ -91,7 +91,7 @@ layout(location = 2) in vec2 tex_coord;
 layout (location = 3) in vec3 binormal;
 // Incoming tangent
 layout (location = 4) in vec3 tangent;
-// Incoming texture coordinate
+// Incoming position in light space
 layout(location = 5) in vec4 light_space_pos;
 
 // Outgoing colour
@@ -124,14 +124,12 @@ void main() {
 		new_normal = normal;
 
 
-	//	tex_colour *= tex_colour;
 	colour = calculate_directional(light, mat, new_normal, view_dir, tex_colour);
     for (int i = 0; i < pn; i++)
 		colour += calculate_point(points[i], mat, position, new_normal, view_dir, tex_colour);
     for (int i = 0; i < sn; i++)
 		colour += calculate_spot(spots[i], mat, position, new_normal, view_dir, tex_colour);
 	colour *= shade_factor;
-    //	colour = vec4(log2(colour.r), log2(colour.g), log2(colour.b), 1.0);
 	colour.a = 1.0;
     // *********************************
 }

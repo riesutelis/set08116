@@ -30,7 +30,7 @@ layout (location = 2) out vec2 tex_coord_out;
 layout (location = 3) out vec3 binormal_out;
 // Outgoing tangent
 layout (location = 4) out vec3 tangent_out;
-// Outgoing texture coordinate
+// Outgoing position in lightspace
 layout (location = 5) out vec4 light_space_pos;
 
 void main()
