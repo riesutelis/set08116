@@ -22,7 +22,7 @@ void main(void) {
 
 	// *********************************
 	// Upadte new_pos
-	vec4 new_pos = pos + vel * delta_time * 2.0;
+	vec4 new_pos = pos + vel * delta_time * 0.2;
 	d += distance(pos, new_pos);
 	// *********************************
 

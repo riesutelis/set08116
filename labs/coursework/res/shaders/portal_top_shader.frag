@@ -114,6 +114,7 @@ void main() {
 //	float z_cutoff = p_pos.z - ((p_normal.x * (position.x - p_pos.x) + p_normal.y * (position.y - p_pos.y)) / p_normal.z);
 //	colour = vec4(z_cutoff * 10.0 - 10.0, 0.0, 0.0, 1.0);
 //	colour = vec4(z_cutoff * 10.0 - 10.0, 0.0, 0.0, 1.0);
+
 	if (dot(eye_pos - portal_pos, portal_normal) < 0)
 	{
 		if (dot(other_portal_normal, ((offset * vec4(portal_pos, 1.0)).xyz - position)) > 0)

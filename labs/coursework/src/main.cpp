@@ -64,6 +64,7 @@ effect colour_eff;
 effect sky_eff;
 effect particle_eff;
 effect compute_eff;
+effect mask_eff;
 
 // Object containers
 geometry geom;
@@ -104,9 +105,16 @@ cubemap cube_map;
 // Portals
 pair<turbo_mesh, turbo_mesh> portals;
 map<string, turbo_mesh> portal_meshes;
+vec3 portal1_normal;
+vec3 portal2_normal;
+float dist_to_p1;
+float dist_to_p2;
 
 // Screen quad for postprocessing
 geometry screen_quad;
+
+// Frame buffer
+frame_buffer frame1;
 
 // FBO texture
 GLuint colour_tex;
@@ -114,6 +122,10 @@ GLuint colour_tex;
 GLuint depth_stencil_buffer;
 // FBO
 GLuint frame;
+
+// Masking textures
+texture current_mask;
+map<string, texture> masks;
 
 // Particle variables
 // Maximum number of particles
@@ -127,6 +139,11 @@ float distances[MAX_PARTICLES];
 GLuint G_Position_buffer, G_Velocity_buffer, G_Original_pos_buffer, G_Distances_buffer;
 // Something
 GLuint vao;
+
+// Menu controls
+enum menu_choice { main_menu, colour_menu, portal1_menu, portal2_menu };
+menu_choice menu = main_menu;
+bool show_menu = false;
 
 default_random_engine ran;
 // Time accumulators
@@ -145,13 +162,8 @@ bool initialise()
 {
 	// Set input mode - hide the cursor
 	glfwSetInputMode(renderer::get_window(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-	
 	// Capture initial mouse position
 	glfwGetCursorPos(renderer::get_window(), &cursor_x, &cursor_y);
-
-	//frame = frame_buffer(renderer::get_screen_width(), renderer::get_screen_height());
-
-
 	return true;
 }
 
@@ -322,7 +334,7 @@ void render_scene(mat4 lightProjectionMat)
 
 
 // Renders the meshes stored in the 'meshes' map using the main effect 'eff'
-void render_portal(mat4 offsetMatrix, mat4 lightProjectionMat, vec3 portal_pos, vec3 portal_normal, vec3 other_portal_normal)
+void render_portal(mat4 offsetMatrix, mat4 lightProjectionMat, vec3 portal_pos, vec3 other_portal_normal, vec3 other_portal_pos, vec3 portal_normal)
 {
 	if (portal_wobble)
 	{
@@ -334,7 +346,7 @@ void render_portal(mat4 offsetMatrix, mat4 lightProjectionMat, vec3 portal_pos, 
 
 	mat4 PV = calculatePV() * offsetMatrix;
 
-	skybox.get_transform().position = portal_pos;
+	skybox.get_transform().position = other_portal_pos;
 	glDisable(GL_DEPTH_TEST);
 	glDepthMask(GL_FALSE);
 	renderer::bind(sky_eff);
@@ -491,16 +503,16 @@ bool load_content()
 			r1 = p_dist(p_rand);
 			r2 = p_dist(p_rand);
 			if (r2 > 0.0f)
-				r2 = 4.0f;
+				r2 = 2.0f;
 			else
-				r2 = -4.0f;
+				r2 = -2.0f;
 			positions[i] = rotate(portal_meshes["portal1"].get_transform().orientation, vec4(r1, 0.0f, cos(r1 * half_pi<float>() / 2.5f) * r2, 0.0f)) + vec4(portals.first.get_transform().position, 0.0);
 			//positions[i] = vec4(r1, 0.0f, cos(r1 * half_pi<float>() / 2.5f) * r2, 0.0f);
 			original_positions[i] = positions[i];
 			r2 /= 4.0f;
 			//velocitys[i] = portal_meshes["portal1"].get_hierarchical_transform_matrix() * vec4(cos(r1 * half_pi<float>() / 2.5f) * r2, 0.0f, sin(r1 * half_pi<float>() / 2.5f) * -1.0f, 0.0f);
-			velocitys[i] = vec4(cos(r1 * half_pi<float>() / 2.5f) * r2, 0.0f, sin(r1 * half_pi<float>() / 2.5f) * -1.0f, 0.0f);
-			positions[i] = rotate(portal_meshes["portal1"].get_transform().orientation, vec4(cos(r1 * half_pi<float>() / 2.5f) * r2, 0.0f, sin(r1 * half_pi<float>() / 2.5f) * -1.0f, 0.0f)) + vec4(portals.first.get_transform().position, 0.0);
+			//velocitys[i] = vec4(cos(r1 * half_pi<float>() / 2.5f) * r2, 0.0f, sin(r1 * half_pi<float>() / 2.5f) * -1.0f, 0.0f);
+			velocitys[i] = rotate(portal_meshes["portal1"].get_transform().orientation, vec4(cos(r1 * half_pi<float>() / 2.5f) * r2, 0.0f, sin(r1 * half_pi<float>() / 2.5f) * -1.0f, 0.0f)) + vec4(portals.first.get_transform().position, 0.0);
 			distances[i] = 0.0f;
 		}
 		// a useless vao, but we need it bound or we get errors.
@@ -673,6 +685,12 @@ bool load_content()
 			texs["deviceArmHorizontal"] = texs["deviceFrameBottom"];
 			texs["deviceArmVertical"] = texs["deviceFrameBottom"];
 			texs["deviceRing"] = texs["deviceFrameBottom"];
+
+			masks["mainMenu"] = texture("textures/MenuMain.png", true, true);
+			masks["portalMenu"] = texture("textures/MenuPortal.png", true, true);
+			masks["colourMenu"] = texture("textures/MenuColour.png", true, true);
+			masks["helpMenu"] = texture("textures/MenuHelp.png", true, true);
+			current_mask = masks["mainMenu"];
 		}
 		//----------------------------------------------------------------------------------------------------------------------------------------------------------
 	}
@@ -719,6 +737,9 @@ bool load_content()
 		sky_eff.add_shader("shaders/skybox.vert", GL_VERTEX_SHADER);
 		sky_eff.add_shader("shaders/skybox.frag", GL_FRAGMENT_SHADER);
 
+		mask_eff.add_shader("shaders/simple.vert", GL_VERTEX_SHADER);
+		mask_eff.add_shader("shaders/mask.frag", GL_FRAGMENT_SHADER);
+
 		particle_eff.add_shader("shaders/particle.vert", GL_VERTEX_SHADER);
 		particle_eff.add_shader("shaders/particle.frag", GL_FRAGMENT_SHADER);
 		particle_eff.add_shader("shaders/particle.geom", GL_GEOMETRY_SHADER);
@@ -732,6 +753,7 @@ bool load_content()
 		portal_eff.build();
 		colour_eff.build();
 		sky_eff.build();
+		mask_eff.build();
 		particle_eff.build();
 		compute_eff.build();
 	}
@@ -782,59 +804,93 @@ bool update(float delta_time)
 	}
 
 
-
+	/*
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	renderer::bind(compute_eff);
 	glUniform1f(compute_eff.get_uniform_location("max_distance"), 1.0f);
 	glUniform1f(compute_eff.get_uniform_location("delta_time"), delta_time);
 
-
+	*/
 
 	// Key inputs
 	{
-		// Enable/disable portal wobble
-		if (glfwGetKey(renderer::get_window(), GLFW_KEY_0))
-			portal_wobble = !portal_wobble;
-
-		// Hue+
-		if (glfwGetKey(renderer::get_window(), GLFW_KEY_KP_9))
+		if (menu == colour_menu)
 		{
-			hue += 15.0 * delta_time;
-			if (hue > 360.0)
-				hue = 0.0;
+			// Hue+
+			if (glfwGetKey(renderer::get_window(), GLFW_KEY_KP_9))
+			{
+				hue += 15.0 * delta_time;
+				if (hue > 360.0)
+					hue = 0.0;
+			}
+			// Hue-
+			if (glfwGetKey(renderer::get_window(), GLFW_KEY_KP_8))
+			{
+				hue -= 15.0 * delta_time;
+				if (hue < -360.0)
+					hue = 0.0;
+			}
+			// Saturation+
+			if (glfwGetKey(renderer::get_window(), GLFW_KEY_KP_6))
+			{
+				saturation += 0.5 * delta_time;
+				if (saturation > 1.0f)
+					saturation = 1.0f;
+			}
+			// Saturation-
+			if (glfwGetKey(renderer::get_window(), GLFW_KEY_KP_5))
+			{
+				saturation -= 0.5 * delta_time;
+				if (saturation < -1.0f)
+					saturation = -1.0f;
+			}
+			// Luma+
+			if (glfwGetKey(renderer::get_window(), GLFW_KEY_KP_3))
+			{
+				luma += 0.5 * delta_time;
+				if (luma > 1.0f)
+					luma = 1.0f;
+			}
+			// Luma-
+			if (glfwGetKey(renderer::get_window(), GLFW_KEY_KP_2))
+			{
+				luma -= 0.5 * delta_time;
+				if (luma < -1.0f)
+					luma = -1.0f;
+			}
 		}
-
-		// Hue-
-		if (glfwGetKey(renderer::get_window(), GLFW_KEY_KP_8))
+		else if (menu == portal1_menu)
 		{
-			hue -= 15.0 * delta_time;
-			if (hue < -360.0)
-				hue = 0.0;
+			// Portal1 movement
+			if (glfwGetKey(renderer::get_window(), GLFW_KEY_KP_8))
+				portals.first.get_transform().translate(vec3(0.0f, 0.0f, -10.0f * delta_time));
+			if (glfwGetKey(renderer::get_window(), GLFW_KEY_KP_2))
+				portals.first.get_transform().translate(vec3(0.0f, 0.0f, 10.0f * delta_time));
+			if (glfwGetKey(renderer::get_window(), GLFW_KEY_KP_4))
+				portals.first.get_transform().translate(vec3(-10.0f * delta_time, 0.0f, 0.0f));
+			if (glfwGetKey(renderer::get_window(), GLFW_KEY_KP_6))
+				portals.first.get_transform().translate(vec3(10.0f * delta_time, 0.0f, 0.0f));
+			if (glfwGetKey(renderer::get_window(), GLFW_KEY_KP_7))
+				portals.first.get_transform().rotate(rotate(mat4(1.0f), 1.0f * delta_time, vec3(0.0f, 1.0f, 0.0f)));
+			if (glfwGetKey(renderer::get_window(), GLFW_KEY_KP_9))
+				portals.first.get_transform().rotate(rotate(mat4(1.0f), -1.0f * delta_time, vec3(0.0f, 1.0f, 0.0f)));
 		}
-
-		// Saturation+
-		if (glfwGetKey(renderer::get_window(), GLFW_KEY_KP_6))
+		else if (menu == portal2_menu)
 		{
-			if (saturation > 1.0f)
-				saturation = 1.0f;
-			saturation += 0.5 * delta_time;
+			// Portal1 movement
+			if (glfwGetKey(renderer::get_window(), GLFW_KEY_KP_8))
+				portals.second.get_transform().translate(vec3(0.0f, 0.0f, -10.0f * delta_time));
+			if (glfwGetKey(renderer::get_window(), GLFW_KEY_KP_2))
+				portals.second.get_transform().translate(vec3(0.0f, 0.0f, 10.0f * delta_time));
+			if (glfwGetKey(renderer::get_window(), GLFW_KEY_KP_4))
+				portals.second.get_transform().translate(vec3(-10.0f * delta_time, 0.0f, 0.0f));
+			if (glfwGetKey(renderer::get_window(), GLFW_KEY_KP_6))
+				portals.second.get_transform().translate(vec3(10.0f * delta_time, 0.0f, 0.0f));
+			if (glfwGetKey(renderer::get_window(), GLFW_KEY_KP_7))
+				portals.second.get_transform().rotate(rotate(mat4(1.0f), 1.0f * delta_time, vec3(0.0f, 1.0f, 0.0f)));
+			if (glfwGetKey(renderer::get_window(), GLFW_KEY_KP_9))
+				portals.second.get_transform().rotate(rotate(mat4(1.0f), -1.0f * delta_time, vec3(0.0f, 1.0f, 0.0f)));
 		}
-
-		// Saturation-
-		if (glfwGetKey(renderer::get_window(), GLFW_KEY_KP_5))
-		{
-			if (saturation < -1.0f)
-				saturation = -1.0f;
-			saturation -= 0.5 * delta_time;
-		}
-
-		// Luma+
-		if (glfwGetKey(renderer::get_window(), GLFW_KEY_KP_3))
-			luma += 0.5 * delta_time;
-
-		// Luma-
-		if (glfwGetKey(renderer::get_window(), GLFW_KEY_KP_2))
-			luma -= 0.5 * delta_time;
 
 
 
@@ -852,6 +908,43 @@ bool update(float delta_time)
 	}
 
 
+
+	portal1_normal = normalize(vec3(portal_meshes["portal1"].get_hierarchical_transform_matrix() * vec4(0.0, 1.0, 0.0, 0.0)));
+	portal2_normal = normalize(vec3(portal_meshes["portal2"].get_hierarchical_transform_matrix() * vec4(0.0, 1.0, 0.0, 0.0)));
+	vec3 p1yproj = portal1_normal;
+	p1yproj.y = 0.0f;
+	p1yproj = normalize(p1yproj);
+	vec3 p2yproj = portal2_normal;
+	p2yproj.y = 0.0f;
+	p2yproj = normalize(p2yproj);
+	float angle;
+	if (cross(p1yproj, p2yproj).y > 0.0f)
+		angle = -acos(dot(p1yproj, p2yproj));
+	else
+		angle = acos(dot(p1yproj, p2yproj));
+
+	float new_dist_to_p1 = distance(free_cam.get_position(), portals.first.get_transform().position);
+	float new_dist_to_p2 = distance(free_cam.get_position(), portals.second.get_transform().position);
+
+	if (new_dist_to_p1 < 1.5f && new_dist_to_p1 < dist_to_p1 - 0.1f)
+	{
+		if (dot(portal1_normal, free_cam.get_position() - portals.first.get_transform().position) > 0)
+			free_cam.set_position(portals.second.get_transform().position - portal2_normal / 2.0f);
+		else
+			free_cam.set_position(portals.second.get_transform().position + portal2_normal / 2.0f);
+		free_cam.rotate(angle, 0.0f);
+	}
+	else if (new_dist_to_p2 < 1.5f && new_dist_to_p2 < dist_to_p2 - 0.1f)
+	{
+		if (dot(portal2_normal, free_cam.get_position() - portals.second.get_transform().position) > 0)
+			free_cam.set_position(portals.first.get_transform().position - portal1_normal / 2.0f);
+		else
+			free_cam.set_position(portals.first.get_transform().position + portal1_normal / 2.0f);
+		free_cam.rotate(angle, 0.0f);
+	}
+
+	dist_to_p1 = new_dist_to_p1;
+	dist_to_p2 = new_dist_to_p1;
 
 
 	// Movement for the thing
@@ -957,6 +1050,7 @@ bool render()
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
 
+	// Render skybox
 	glDisable(GL_DEPTH_TEST);
 	glDepthMask(GL_FALSE);
 	renderer::bind(sky_eff);
@@ -993,17 +1087,21 @@ bool render()
 	
 	// Render portals
 	{
-		vec3 portal1_normal = normalize(vec3(portal_meshes["portal1"].get_hierarchical_transform_matrix() * vec4(0.0, 1.0, 0.0, 0.0)));
-		vec3 portal2_normal = normalize(vec3(portal_meshes["portal2"].get_hierarchical_transform_matrix() * vec4(0.0, 1.0, 0.0, 0.0)));
+
+
 		// Render image through first portal
 		glStencilFunc(GL_EQUAL, 1, 0xFF);
-		mat4 offset = inverse(portals.second.get_transform().get_transform_matrix()) * portals.first.get_transform().get_transform_matrix();
-		render_portal(offset, lightProjectionMat, portals.first.get_transform().position, portal1_normal, portal2_normal);
-		
+		//mat4 offset = inverse(portals.second.get_transform().get_transform_matrix()) * portals.first.get_transform().get_transform_matrix();
+		mat4 offset = portals.first.get_transform().get_transform_matrix() * inverse(portals.second.get_transform().get_transform_matrix());
+		render_portal(offset, lightProjectionMat, portals.first.get_transform().position, portal2_normal, portals.second.get_transform().position, portal1_normal);
+
+
+
 		// Render image through second portal
 		glStencilFunc(GL_EQUAL, 2, 0xFF);
-		offset = inverse(portals.first.get_transform().get_transform_matrix()) * portals.second.get_transform().get_transform_matrix();
-		render_portal(offset, lightProjectionMat, portals.second.get_transform().position, portal2_normal, portal1_normal);
+	//	offset = inverse(portals.first.get_transform().get_transform_matrix()) * portals.second.get_transform().get_transform_matrix();
+		offset = portals.second.get_transform().get_transform_matrix() * inverse(portals.first.get_transform().get_transform_matrix());
+		render_portal(offset, lightProjectionMat, portals.second.get_transform().position, portal1_normal, portals.first.get_transform().position, portal2_normal);
 		
 
 		// Disable stencil testing
@@ -1013,8 +1111,8 @@ bool render()
 
 
 
-
-
+	/*
+	
 	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	// Compute the particles
 	// Bind Compute Shader
@@ -1029,7 +1127,7 @@ bool render()
 	// Sync, wait for completion
 	glMemoryBarrier(GL_ALL_BARRIER_BITS);
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
-
+	
 	// Bind particle effect
 	renderer::bind(particle_eff);
 	// Create MV matrix
@@ -1045,19 +1143,19 @@ bool render()
 	// Bind position buffer as GL_ARRAY_BUFFER
 	glBindBuffer(GL_ARRAY_BUFFER, G_Position_buffer);
 	// Setup vertex format
-
+	
 	glEnableVertexAttribArray(0);
 	glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 0, (void *)0);
-
+	/*
 	// Enable Blending
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	// Disable Depth Mask
-//	glDepthMask(GL_FALSE);
+	glDepthMask(GL_FALSE);
 	// Render
 	glDrawArrays(GL_POINTS, 0, MAX_PARTICLES);
 	// Tidy up, enable depth mask
-//	glDepthMask(GL_TRUE);
+	glDepthMask(GL_TRUE);
 	// Disable Blend
 	glDisable(GL_BLEND);
 	// Unbind all arrays
@@ -1066,15 +1164,15 @@ bool render()
 
 	glUseProgram(0);
 
-
-
+	*/
+	
 
 	// Do postprocessing
 	{
-		renderer::set_render_target();
+		//renderer::set_render_target();
+
 		renderer::bind(colour_eff);
 		glUniformMatrix4fv(colour_eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(mat4(1.0)));
-		//renderer::bind(fr.get_frame(), 0);
 		glBindTexture(GL_TEXTURE_2D, colour_tex);
 		glUniform1i(colour_eff.get_uniform_location("tex"), colour_tex);
 		glUniform1f(colour_eff.get_uniform_location("hue_offset"), hue);
@@ -1082,10 +1180,73 @@ bool render()
 		glUniform1f(colour_eff.get_uniform_location("brightness"), luma);
 		renderer::render(screen_quad);
 	}
+	
+	
+	
+	renderer::set_render_target();
 
-
+	renderer::bind(mask_eff);
+	glUniformMatrix4fv(mask_eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(mat4(1.0)));
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, colour_tex);
+	glUniform1i(colour_eff.get_uniform_location("tex"), 0);
+	
+	// Set active texture
+	glActiveTexture(GL_TEXTURE0 + 1);
+	if (show_menu)
+	{
+		glBindTexture(current_mask.get_type(), current_mask.get_id());
+		glUniform1i(mask_eff.get_uniform_location("alpha_map"), 1);
+	}
+	else
+	{
+		glBindTexture(masks["helpMenu"].get_type(), masks["helpMenu"].get_id());
+		glUniform1i(mask_eff.get_uniform_location("alpha_map"), 1);
+	}
+	renderer::render(screen_quad);
+	
+	
 
 	return true;
+}
+
+void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
+{
+	// Whether or not to show menu
+	if (key == GLFW_KEY_F1 && action == GLFW_RELEASE)
+		show_menu = !show_menu;
+
+
+	if (menu != main_menu)
+	{
+		if (key == GLFW_KEY_KP_0 && action == GLFW_RELEASE)
+		{
+			menu = main_menu;
+			current_mask = masks["mainMenu"];
+		}
+	}
+	else if (menu == main_menu)
+	{
+		if (key == GLFW_KEY_KP_1 && action == GLFW_RELEASE)
+		{
+			menu = colour_menu;
+			current_mask = masks["colourMenu"];
+		}
+		else if (key == GLFW_KEY_KP_2 && action == GLFW_RELEASE)
+		{
+			menu = portal1_menu;
+			current_mask = masks["portalMenu"];
+		}
+		else if (key == GLFW_KEY_KP_3 && action == GLFW_RELEASE)
+		{
+			menu = portal2_menu;
+			current_mask = masks["portalMenu"];
+		}
+
+		// Enable/disable portal wobble
+		if (key == GLFW_KEY_KP_0 && action == GLFW_RELEASE)
+			portal_wobble = !portal_wobble;
+	}
 }
 
 void main()
@@ -1097,6 +1258,7 @@ void main()
 	application.set_load_content(load_content);
 	application.set_update(update);
 	application.set_render(render);
+	application.set_keyboard_callback(key_callback);
 	// Run application
 	application.run();
 }
