@@ -2,7 +2,6 @@
 #include <graphics_framework.h>
 
 using namespace std;
-using namespace std::chrono;
 using namespace graphics_framework;
 using namespace glm;
 
@@ -62,12 +61,9 @@ effect portal_eff;
 effect shadow_eff;
 effect colour_eff;
 effect sky_eff;
-effect particle_eff;
-effect compute_eff;
 effect mask_eff;
 
 // Object containers
-geometry geom;
 map<string, turbo_mesh> meshes;
 map<string, texture> texs;
 map<string, texture> normal_maps;
@@ -113,9 +109,6 @@ float dist_to_p2;
 // Screen quad for postprocessing
 geometry screen_quad;
 
-// Frame buffer
-frame_buffer frame1;
-
 // FBO texture
 GLuint colour_tex;
 // FBO depth-stencil buffer
@@ -126,19 +119,6 @@ GLuint frame;
 // Masking textures
 texture current_mask;
 map<string, texture> masks;
-
-// Particle variables
-// Maximum number of particles
-const unsigned int MAX_PARTICLES = 2048;
-// position and velocity vectors
-vec4 positions[MAX_PARTICLES];
-vec4 velocitys[MAX_PARTICLES];
-vec4 original_positions[MAX_PARTICLES];
-float distances[MAX_PARTICLES];
-// Buffer IDs
-GLuint G_Position_buffer, G_Velocity_buffer, G_Original_pos_buffer, G_Distances_buffer;
-// Something
-GLuint vao;
 
 // Menu controls
 enum menu_choice { main_menu, colour_menu, portal1_menu, portal2_menu };
@@ -209,7 +189,7 @@ vec3 eye_pos()
 // Use keyboard to move the camera - WSAD for xz and space, left control for y, mouse to rotate
 void moveFreeCamera(float delta_time)
 {
-	float speed = 0.4f;
+	float speed = 0.3f;
 	float mouse_sensitivity = 2.0;
 
 	vec3 fw = free_cam.get_forward();
@@ -265,7 +245,6 @@ void draw_stencil_mask(turbo_mesh m, int layer)
 
 	// Binds shadow_eff because it only calculates position information for objects
 	renderer::bind(shadow_eff);
-	//mat4 M = m.get_transform().get_transform_matrix();;
 	mat4 MVP = calculatePV() * m.get_hierarchical_transform_matrix();
 	glUniformMatrix4fv(shadow_eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(MVP));
 	// Draw to stencil buffer regardless of facing
@@ -433,20 +412,20 @@ bool load_content()
 		//-------------------------
 		glGenFramebuffersEXT(1, &frame);
 		glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, frame);
-		//Attach 2D texture to this FBO
+		// Attach 2D texture to this FBO
 		glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT0_EXT, GL_TEXTURE_2D, colour_tex, 0);
 		//-------------------------
-		// generate the depth-stencil buffer
+		// Generate the depth-stencil buffer
 		glGenRenderbuffersEXT(1, &depth_stencil_buffer);
 		glBindRenderbufferEXT(GL_RENDERBUFFER_EXT, depth_stencil_buffer);
 		glRenderbufferStorageEXT(GL_RENDERBUFFER_EXT, GL_DEPTH24_STENCIL8_EXT, renderer::get_screen_width(), renderer::get_screen_height());
 		//-------------------------
-		//Attach depth buffer to FBO
+		// Attach depth buffer to FBO
 		glFramebufferRenderbufferEXT(GL_FRAMEBUFFER_EXT, GL_DEPTH_ATTACHMENT_EXT, GL_RENDERBUFFER_EXT, depth_stencil_buffer);
-		//Also attach as a stencil
+		// Also attach as a stencil
 		glFramebufferRenderbufferEXT(GL_FRAMEBUFFER_EXT, GL_STENCIL_ATTACHMENT_EXT, GL_RENDERBUFFER_EXT, depth_stencil_buffer);
 		//-------------------------
-		//Does the GPU support current FBO configuration?
+		// Does the GPU support current FBO configuration?
 		GLenum status;
 		status = glCheckFramebufferStatusEXT(GL_FRAMEBUFFER_EXT);
 		switch (status)
@@ -457,7 +436,6 @@ bool load_content()
 		default:
 			cout << "Frame buffer not complete" << endl;
 		}
-		//-------------------------
 	}
 
 
@@ -481,74 +459,12 @@ bool load_content()
 
 		// Portal meshes are required to correctly draw portals on the stencil buffer
 		portal_meshes["portal1"] = turbo_mesh(geometry_builder::create_disk(40, vec2(6.0f, 3.0f)));
-	//	portal_meshes["portal1"].get_transform().position = vec3(-10.0, 4.0, 10.0);
 		portal_meshes["portal1"].get_transform().orientation = vec3(half_pi<float>(), 0.0, half_pi<float>());
 		portal_meshes["portal1"].set_parent(&portals.first);
 		portal_meshes["portal2"] = turbo_mesh(geometry_builder::create_disk(40, vec2(6.0f, 3.0f)));
-	//	portal_meshes["portal2"].get_transform().position = vec3(15.0, 4.0, -15.0);
 		portal_meshes["portal2"].get_transform().orientation = vec3(half_pi<float>(), 0.0, half_pi<float>());
 		portal_meshes["portal2"].set_parent(&portals.second);
 	}
-
-
-	// Setting up particles
-	{
-		default_random_engine p_rand(duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count());
-		uniform_real_distribution<float> p_dist(-2.5f, 2.5f);
-		float r1;
-		float r2;
-		// Initilise particles//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-		for (unsigned int i = 0; i < MAX_PARTICLES; ++i)
-		{
-			r1 = p_dist(p_rand);
-			r2 = p_dist(p_rand);
-			if (r2 > 0.0f)
-				r2 = 2.0f;
-			else
-				r2 = -2.0f;
-			positions[i] = rotate(portal_meshes["portal1"].get_transform().orientation, vec4(r1, 0.0f, cos(r1 * half_pi<float>() / 2.5f) * r2, 0.0f)) + vec4(portals.first.get_transform().position, 0.0);
-			//positions[i] = vec4(r1, 0.0f, cos(r1 * half_pi<float>() / 2.5f) * r2, 0.0f);
-			original_positions[i] = positions[i];
-			r2 /= 4.0f;
-			//velocitys[i] = portal_meshes["portal1"].get_hierarchical_transform_matrix() * vec4(cos(r1 * half_pi<float>() / 2.5f) * r2, 0.0f, sin(r1 * half_pi<float>() / 2.5f) * -1.0f, 0.0f);
-			//velocitys[i] = vec4(cos(r1 * half_pi<float>() / 2.5f) * r2, 0.0f, sin(r1 * half_pi<float>() / 2.5f) * -1.0f, 0.0f);
-			velocitys[i] = rotate(portal_meshes["portal1"].get_transform().orientation, vec4(cos(r1 * half_pi<float>() / 2.5f) * r2, 0.0f, sin(r1 * half_pi<float>() / 2.5f) * -1.0f, 0.0f)) + vec4(portals.first.get_transform().position, 0.0);
-			distances[i] = 0.0f;
-		}
-		// a useless vao, but we need it bound or we get errors.
-		glGenVertexArrays(1, &vao);
-		glBindVertexArray(vao);
-		// *********************************
-		//Generate Position Data buffer
-		glGenBuffers(1, &G_Position_buffer);
-		// Bind as GL_SHADER_STORAGE_BUFFER
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, G_Position_buffer);
-		// Send Data to GPU, use GL_DYNAMIC_DRAW
-		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(vec4) * MAX_PARTICLES, positions, GL_DYNAMIC_DRAW);
-		// Generate Velocity Data buffer
-		glGenBuffers(1, &G_Velocity_buffer);
-		// Bind as GL_SHADER_STORAGE_BUFFER
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, G_Velocity_buffer);
-		// Send Data to GPU, use GL_DYNAMIC_DRAW
-		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(vec4) * MAX_PARTICLES, velocitys, GL_DYNAMIC_DRAW);
-		// Generate original position Data buffer
-		glGenBuffers(1, &G_Original_pos_buffer);
-		// Bind as GL_SHADER_STORAGE_BUFFER
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, G_Original_pos_buffer);
-		// Send Data to GPU, use GL_DYNAMIC_DRAW
-		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(vec4) * MAX_PARTICLES, original_positions, GL_DYNAMIC_DRAW);
-		// Generate distance traveled Data buffer
-		glGenBuffers(1, &G_Distances_buffer);
-		// Bind as GL_SHADER_STORAGE_BUFFER
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, G_Distances_buffer);
-		// Send Data to GPU, use GL_DYNAMIC_DRAW
-		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(vec4) * MAX_PARTICLES, distances, GL_DYNAMIC_DRAW);
-		//Unbind
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
-	}
-
-
-
 
 
 	// Materials
@@ -569,7 +485,7 @@ bool load_content()
 
 	// Load normal maps, meshes and textures
 	{
-		// Load normal maps ---------------------------------------------------------------------------------------------------------------------------------------
+		// Load normal maps
 		{
 			normal_maps["wall0"] = texture("textures/CeramicBrick_normalmap_M.jpg");
 			normal_maps["deviceFrameBottom"] = texture("textures/Copper_A_normalmap_M.png");
@@ -580,10 +496,9 @@ bool load_content()
 			normal_maps["deviceArmVertical"] = normal_maps["deviceFrameBottom"];
 			normal_maps["deviceRing"] = normal_maps["deviceFrameBottom"];
 		}
-		//---------------------------------------------------------------------------------------------------------------------------------------------------------
 
 
-		// Load meshes #############################################################################################################################################
+		// Load meshes
 		{
 			meshes["floor"] = turbo_mesh(geometry_builder::create_plane());
 			meshes["floor"].get_transform().position = vec3(0.0f, 0.0f, 0.0f);
@@ -663,12 +578,9 @@ bool load_content()
 			meshes["deviceFrameBottom"].get_transform().position = vec3(0.0f, 0.25f, -24.0f);
 			meshes["deviceFrameBottom"].set_material(whiteCopper);
 		}
-		//##########################################################################################################################################################
 
 
-
-
-		// Load textures -------------------------------------------------------------------------------------------------------------------------------------------
+		// Load textures
 		{
 			texs["check_1"] = texture("textures/check_1.png", true, true);
 			texs["floor"] = texture("textures/Asphalt.jpg", true, true);
@@ -692,24 +604,17 @@ bool load_content()
 			masks["helpMenu"] = texture("textures/MenuHelp.png", true, true);
 			current_mask = masks["mainMenu"];
 		}
-		//----------------------------------------------------------------------------------------------------------------------------------------------------------
 	}
 
 
 	// Load lights
-
 	light = directional_light(vec4(0.003f, 0.003f, 0.003f, 1.0f), vec4(0.2f, 0.1f, 0.2f, 1.0f), normalize(vec3(0.5f, -0.2f, 0.5f)));		// evening
-
-//	light = directional_light(vec4(0.0f, 0.0f, 0.0f, 1.0f), vec4(0.0f, 0.0f, 0.0f, 1.0f), normalize(vec3(0.6f, -1.0f, 0.3f)));				// No directional for debugging
-//	light = directional_light(vec4(1.0f, 1.0f, 1.0f, 1.0f), vec4(0.0f, 0.0f, 0.0f, 1.0f), normalize(vec3(0.6f, -1.0f, 0.3f)));				// full ambient for debugging
 
 	points.push_back(point_light(vec4(1.0f, 0.9f, 0.63f, 1.0f), vec3(25.0f, 11.5f, 18.0f), 0.0f, 0.01f, 0.01f));							// Lamppost0
 	points.push_back(point_light(vec4(1.0f, 0.9f, 0.63f, 1.0f), vec3(25.0f, 11.5f, 0.0f), 0.0f, 0.01f, 0.01f));								// Lamppost1
 
 	spots.push_back(spot_light(white, vec3(-16.5f, 14.3f, 5.0f), vec3(0.0f, -1.0f, 0.0f), 0.0f, 0.05f, 0.005f, 10.0f));						// spotlight0
-	//shadows.push_back(shadow_map(renderer::get_screen_width(), renderer::get_screen_height()));
 	spots.push_back(spot_light(white, vec3(0.0f, 0.4f, -1.0f), vec3(0.0f, 0.0f, -1.0f), 0.0f, 0.05f, 0.0f, 10.0f));							// flashlight
-	//shadows.push_back(shadow_map(renderer::get_screen_width(), renderer::get_screen_height()));
 
 	
 	// Initialize shadow maps
@@ -740,12 +645,6 @@ bool load_content()
 		mask_eff.add_shader("shaders/simple.vert", GL_VERTEX_SHADER);
 		mask_eff.add_shader("shaders/mask.frag", GL_FRAGMENT_SHADER);
 
-		particle_eff.add_shader("shaders/particle.vert", GL_VERTEX_SHADER);
-		particle_eff.add_shader("shaders/particle.frag", GL_FRAGMENT_SHADER);
-		particle_eff.add_shader("shaders/particle.geom", GL_GEOMETRY_SHADER);
-
-		compute_eff.add_shader("shaders/particle.comp", GL_COMPUTE_SHADER);
-
 
 		// Build effect
 		eff.build();
@@ -754,8 +653,6 @@ bool load_content()
 		colour_eff.build();
 		sky_eff.build();
 		mask_eff.build();
-		particle_eff.build();
-		compute_eff.build();
 	}
 
 
@@ -767,9 +664,7 @@ bool load_content()
 	
 	// Set free camera
 	free_cam.set_position(vec3(30.0f, 1.0f, 50.0f));
-//	free_cam.set_position(vec3(10.0f, 1.0f, 20.0f));
 	free_cam.set_target(vec3(0.0f, 0.0f, 0.0f));
-//	free_cam.set_target(vec3(-10.0, 4.0, 10.0));
 	free_cam.set_projection(quarter_pi<float>() * 1.3f, renderer::get_screen_aspect(), 0.1f, 1000.0f);
 
 	// Select starting camera
@@ -803,14 +698,6 @@ bool update(float delta_time)
 			shadows[i].light_dir = vec3(0.0f, 0.0f, -1.0f);
 	}
 
-
-	/*
-	//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	renderer::bind(compute_eff);
-	glUniform1f(compute_eff.get_uniform_location("max_distance"), 1.0f);
-	glUniform1f(compute_eff.get_uniform_location("delta_time"), delta_time);
-
-	*/
 
 	// Key inputs
 	{
@@ -893,8 +780,6 @@ bool update(float delta_time)
 		}
 
 
-
-
 		// Camera selection
 		if (glfwGetKey(renderer::get_window(), GLFW_KEY_1))
 			cam_select = target0;
@@ -908,79 +793,86 @@ bool update(float delta_time)
 	}
 
 
-
+	// Update portal normals
 	portal1_normal = normalize(vec3(portal_meshes["portal1"].get_hierarchical_transform_matrix() * vec4(0.0, 1.0, 0.0, 0.0)));
 	portal2_normal = normalize(vec3(portal_meshes["portal2"].get_hierarchical_transform_matrix() * vec4(0.0, 1.0, 0.0, 0.0)));
-	vec3 p1yproj = portal1_normal;
-	p1yproj.y = 0.0f;
-	p1yproj = normalize(p1yproj);
-	vec3 p2yproj = portal2_normal;
-	p2yproj.y = 0.0f;
-	p2yproj = normalize(p2yproj);
-	float angle;
-	if (cross(p1yproj, p2yproj).y > 0.0f)
-		angle = -acos(dot(p1yproj, p2yproj));
-	else
-		angle = acos(dot(p1yproj, p2yproj));
 
-	float new_dist_to_p1 = distance(free_cam.get_position(), portals.first.get_transform().position);
-	float new_dist_to_p2 = distance(free_cam.get_position(), portals.second.get_transform().position);
 
-	if (new_dist_to_p1 < 1.5f && new_dist_to_p1 < dist_to_p1 - 0.1f)
+	// Movement trough portals
 	{
-		if (dot(portal1_normal, free_cam.get_position() - portals.first.get_transform().position) > 0)
-			free_cam.set_position(portals.second.get_transform().position - portal2_normal / 2.0f);
+		// Calculate the angle between portal normals on the y axis
+		vec3 p1yproj = portal1_normal;
+		p1yproj.y = 0.0f;
+		p1yproj = normalize(p1yproj);
+		vec3 p2yproj = portal2_normal;
+		p2yproj.y = 0.0f;
+		p2yproj = normalize(p2yproj);
+		float angle;
+		if (cross(p1yproj, p2yproj).y > 0.0f)
+			angle = -acos(dot(p1yproj, p2yproj));
 		else
-			free_cam.set_position(portals.second.get_transform().position + portal2_normal / 2.0f);
-		free_cam.rotate(angle, 0.0f);
-	}
-	else if (new_dist_to_p2 < 1.5f && new_dist_to_p2 < dist_to_p2 - 0.1f)
-	{
-		if (dot(portal2_normal, free_cam.get_position() - portals.second.get_transform().position) > 0)
-			free_cam.set_position(portals.first.get_transform().position - portal1_normal / 2.0f);
-		else
-			free_cam.set_position(portals.first.get_transform().position + portal1_normal / 2.0f);
-		free_cam.rotate(angle, 0.0f);
-	}
+			angle = acos(dot(p1yproj, p2yproj));
 
-	dist_to_p1 = new_dist_to_p1;
-	dist_to_p2 = new_dist_to_p1;
+		// Calculate distance to the portals
+		float new_dist_to_p1 = distance(free_cam.get_position(), portals.first.get_transform().position);
+		float new_dist_to_p2 = distance(free_cam.get_position(), portals.second.get_transform().position);
+
+		// Check if close enough to portals and if got closer since last update
+		if (new_dist_to_p1 < 1.5f && (new_dist_to_p1 < dist_to_p1))
+		{
+			if (dot(portal1_normal, free_cam.get_position() - portals.first.get_transform().position) > 0)
+				free_cam.set_position(free_cam.get_position() + portals.second.get_transform().position - portals.first.get_transform().position - portal2_normal / 2.0f);
+			else
+				free_cam.set_position(free_cam.get_position() + portals.second.get_transform().position - portals.first.get_transform().position + portal2_normal / 2.0f);
+			free_cam.rotate(angle, 0.0f);
+			new_dist_to_p2 = 0.0f;
+		}
+		else if (new_dist_to_p2 < 1.5f && (new_dist_to_p2 < dist_to_p2))
+		{
+			if (dot(portal2_normal, free_cam.get_position() - portals.second.get_transform().position) > 0)
+				free_cam.set_position(free_cam.get_position() + portals.first.get_transform().position - portals.second.get_transform().position - portal1_normal / 2.0f);
+			else
+				free_cam.set_position(free_cam.get_position() + portals.first.get_transform().position - portals.second.get_transform().position + portal1_normal / 2.0f);
+			new_dist_to_p1 = 0.0f;
+			free_cam.rotate(-angle, 0.0f);
+		}
+		// Update the previous distance values
+		dist_to_p1 = new_dist_to_p1;
+		dist_to_p2 = new_dist_to_p1;
+	}
 
 
 	// Movement for the thing
 	{
-	uniform_real_distribution<float> dist(-0.4f, 0.4f);
-	dev_dx += dist(ran);
-	if (meshes["deviceArmVertical"].get_transform().position.x > 8.7f)
-	{
-		meshes["deviceArmVertical"].get_transform().position.x = 8.7f;
-		dev_dx = 0.0f;
-	}
-	if (meshes["deviceArmVertical"].get_transform().position.x < -8.7f)
-	{
-		meshes["deviceArmVertical"].get_transform().position.x = -8.7f;
-		dev_dx = 0.0f;
-	}
-	meshes["deviceArmVertical"].get_transform().translate(vec3(dev_dx * delta_time, 0.0f, 0.0f));
+		uniform_real_distribution<float> dist(-0.4f, 0.4f);
+		dev_dx += dist(ran);
+		if (meshes["deviceArmVertical"].get_transform().position.x > 8.7f)
+		{
+			meshes["deviceArmVertical"].get_transform().position.x = 8.7f;
+			dev_dx = 0.0f;
+		}
+		if (meshes["deviceArmVertical"].get_transform().position.x < -8.7f)
+		{
+			meshes["deviceArmVertical"].get_transform().position.x = -8.7f;
+			dev_dx = 0.0f;
+		}
+		meshes["deviceArmVertical"].get_transform().translate(vec3(dev_dx * delta_time, 0.0f, 0.0f));
 
-	dev_dy += dist(ran);
-	if (meshes["deviceArmHorizontal"].get_transform().position.y > 5.5f)
-	{
-		meshes["deviceArmHorizontal"].get_transform().position.y = 5.5f;
-		dev_dy = 0.0f;
-	}
-	if (meshes["deviceArmHorizontal"].get_transform().position.y < 1.5f)
-	{
-		meshes["deviceArmHorizontal"].get_transform().position.y = 1.5f;
-		dev_dy = 0.0f;
-	}
-	meshes["deviceArmHorizontal"].get_transform().translate(vec3(0.0f, dev_dy * delta_time, 0.0f));
+		dev_dy += dist(ran);
+		if (meshes["deviceArmHorizontal"].get_transform().position.y > 5.5f)
+		{
+			meshes["deviceArmHorizontal"].get_transform().position.y = 5.5f;
+			dev_dy = 0.0f;
+		}
+		if (meshes["deviceArmHorizontal"].get_transform().position.y < 1.5f)
+		{
+			meshes["deviceArmHorizontal"].get_transform().position.y = 1.5f;
+			dev_dy = 0.0f;
+		}
+		meshes["deviceArmHorizontal"].get_transform().translate(vec3(0.0f, dev_dy * delta_time, 0.0f));
 
-	meshes["deviceRing"].get_transform().position.y = meshes["deviceArmHorizontal"].get_transform().position.y - 3.75f;
-	//---------------------------------------------------------------------------------------------------------------------------------------------------------
+		meshes["deviceRing"].get_transform().position.y = meshes["deviceArmHorizontal"].get_transform().position.y - 3.75f;
 	}
-
-
 
 
 	// Update the camera
@@ -1008,32 +900,22 @@ bool update(float delta_time)
 bool render()
 {
 	mat4 V;
-
-
-
-
-
-
-
-
-	// Render the shadow map ##############################################################################################################
-
+	// Render the shadow map
 	// Set render target to shadow map
 	renderer::set_render_target(shadows[1]);
 	// Clear depth buffer bit
 	glClear(GL_DEPTH_BUFFER_BIT);
 	// Set face cull mode to front
 	glCullFace(GL_FRONT);
-
-	// Create a projection matrix for the poin of view of the light
+	// Create a projection matrix for the point of view of the light
 	mat4 lightProjectionMat = perspective<float>(90.0f, renderer::get_screen_aspect(), 0.1f, 1000.f);
-
 	// Bind shadow shader
 	renderer::bind(shadow_eff);
 	V = shadows[1].get_view();
 
 	// Render the meshes
-	for (auto &e : meshes) {
+	for (auto &e : meshes)
+	{
 		turbo_mesh m = e.second;
 		// Create MVP matrix
 		auto M = m.get_hierarchical_transform_matrix();
@@ -1042,7 +924,6 @@ bool render()
 		renderer::render(m);
 	}
 	glCullFace(GL_BACK);
-	//####################################################################################################################################
 
 	
 	// Set the render target to frame (frame buffer object)
@@ -1067,8 +948,7 @@ bool render()
 	render_scene(lightProjectionMat);
 
 
-
-	// Mark out portals in the stencil buffer //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	// Mark out portals in the stencil buffer
 	{
 		// Enables stencil buffer editing 
 		glStencilMask(0xFF);
@@ -1078,99 +958,29 @@ bool render()
 		draw_stencil_mask(portal_meshes["portal2"], 2);
 		// Disables stencil buffer editing 
 		glStencilMask(0x00);
-
 		// Clears the depth buffer
 		glClear(GL_DEPTH_BUFFER_BIT);
-		///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	}
 
 	
 	// Render portals
 	{
-
-
 		// Render image through first portal
 		glStencilFunc(GL_EQUAL, 1, 0xFF);
-		//mat4 offset = inverse(portals.second.get_transform().get_transform_matrix()) * portals.first.get_transform().get_transform_matrix();
 		mat4 offset = portals.first.get_transform().get_transform_matrix() * inverse(portals.second.get_transform().get_transform_matrix());
 		render_portal(offset, lightProjectionMat, portals.first.get_transform().position, portal2_normal, portals.second.get_transform().position, portal1_normal);
-
-
-
 		// Render image through second portal
 		glStencilFunc(GL_EQUAL, 2, 0xFF);
-	//	offset = inverse(portals.first.get_transform().get_transform_matrix()) * portals.second.get_transform().get_transform_matrix();
 		offset = portals.second.get_transform().get_transform_matrix() * inverse(portals.first.get_transform().get_transform_matrix());
 		render_portal(offset, lightProjectionMat, portals.second.get_transform().position, portal1_normal, portals.first.get_transform().position, portal2_normal);
-		
-
 		// Disable stencil testing
 		glDisable(GL_STENCIL_TEST);
 	}
 	
 
-
-
-	/*
-	
-	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	// Compute the particles
-	// Bind Compute Shader
-	renderer::bind(compute_eff);
-	// Bind data as SSBO
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, G_Position_buffer);
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, G_Velocity_buffer);
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, G_Original_pos_buffer);
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, G_Distances_buffer);
-	// Dispatch
-	glDispatchCompute(MAX_PARTICLES / 64, 1, 1);
-	// Sync, wait for completion
-	glMemoryBarrier(GL_ALL_BARRIER_BITS);
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
-	
-	// Bind particle effect
-	renderer::bind(particle_eff);
-	// Create MV matrix
-	auto P = free_cam.get_projection();
-	V = free_cam.get_view(); //calculatePV() * inverse(P);
-							 // Set MV, and P matrix uniforms seperatly
-	glUniformMatrix4fv(particle_eff.get_uniform_location("MV"), 1, GL_FALSE, value_ptr(V));
-	glUniformMatrix4fv(particle_eff.get_uniform_location("P"), 1, GL_FALSE, value_ptr(P));
-	// Set point_size size uniform to .1f
-	glUniform1f(particle_eff.get_uniform_location("point_size"), 0.1f);
-
-
-	// Bind position buffer as GL_ARRAY_BUFFER
-	glBindBuffer(GL_ARRAY_BUFFER, G_Position_buffer);
-	// Setup vertex format
-	
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 0, (void *)0);
-	/*
-	// Enable Blending
-	glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	// Disable Depth Mask
-	glDepthMask(GL_FALSE);
-	// Render
-	glDrawArrays(GL_POINTS, 0, MAX_PARTICLES);
-	// Tidy up, enable depth mask
-	glDepthMask(GL_TRUE);
-	// Disable Blend
-	glDisable(GL_BLEND);
-	// Unbind all arrays
-	glDisableVertexAttribArray(0);
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-	glUseProgram(0);
-
-	*/
-	
-
-	// Do postprocessing
+	// Postprocessing
+	// Colour correction
 	{
-		//renderer::set_render_target();
-
 		renderer::bind(colour_eff);
 		glUniformMatrix4fv(colour_eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(mat4(1.0)));
 		glBindTexture(GL_TEXTURE_2D, colour_tex);
@@ -1182,15 +992,14 @@ bool render()
 	}
 	
 	
-	
+	// Masking
+	// Set render target to screen
 	renderer::set_render_target();
-
 	renderer::bind(mask_eff);
 	glUniformMatrix4fv(mask_eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(mat4(1.0)));
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, colour_tex);
 	glUniform1i(colour_eff.get_uniform_location("tex"), 0);
-	
 	// Set active texture
 	glActiveTexture(GL_TEXTURE0 + 1);
 	if (show_menu)
@@ -1205,10 +1014,10 @@ bool render()
 	}
 	renderer::render(screen_quad);
 	
-	
 
 	return true;
 }
+
 
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
 {
@@ -1248,6 +1057,7 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 			portal_wobble = !portal_wobble;
 	}
 }
+
 
 void main()
 {
