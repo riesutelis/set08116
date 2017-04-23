@@ -231,32 +231,15 @@ void moveFreeCamera(float delta_time)
 // Draws a stencil mask for a single mesh
 void draw_stencil_mask(turbo_mesh m, int layer)
 {
-	// Enables stencil testing
-	glEnable(GL_STENCIL_TEST);
-	// Disable colour mask
-	glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-
 	// Put layer into stencil buffer where depth test passes
 	glStencilFunc(GL_ALWAYS, layer, 0xFF);
-	glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
-
-	// Enables writing to all bits of the stencil buffer
-	glStencilMask(0xFF);
 
 	// Binds shadow_eff because it only calculates position information for objects
 	renderer::bind(shadow_eff);
 	mat4 MVP = calculatePV() * m.get_hierarchical_transform_matrix();
 	glUniformMatrix4fv(shadow_eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(MVP));
 	// Draw to stencil buffer regardless of facing
-	glDisable(GL_CULL_FACE);
 	renderer::render(m);
-	glEnable(GL_CULL_FACE);
-
-	// Set colour writing on
-	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-
-	// Disable stencil buffer editing on all bits
-	glStencilMask(0x00);
 }
 
 
@@ -266,6 +249,11 @@ void render_scene(mat4 lightProjectionMat)
 	mat4 M;
 	mat4 PV = calculatePV();
 	renderer::bind(eff);
+	glUniform1i(eff.get_uniform_location("pn"), points.size());
+	glUniform1i(eff.get_uniform_location("sn"), spots.size());
+	glUniform3fv(eff.get_uniform_location("eye_pos"), 1, value_ptr(eye_pos()));
+	renderer::bind(shadows[1].buffer->get_depth(), 1);
+	glUniform1i(eff.get_uniform_location("shadow_map"), 1);
 	for (auto &e : meshes)
 	{
 		turbo_mesh m = e.second;
@@ -301,12 +289,7 @@ void render_scene(mat4 lightProjectionMat)
 		else
 			glUniform1f(eff.get_uniform_location("map_norms"), -1.0);
 
-		glUniform1i(eff.get_uniform_location("pn"), points.size());
-		glUniform1i(eff.get_uniform_location("sn"), spots.size());
 		glUniform1i(eff.get_uniform_location("tex"), 0);
-		glUniform3fv(eff.get_uniform_location("eye_pos"), 1, value_ptr(eye_pos()));
-		renderer::bind(shadows[1].buffer->get_depth(), 1);
-		glUniform1i(eff.get_uniform_location("shadow_map"), 1);
 		renderer::render(m);
 	}
 }
@@ -332,8 +315,6 @@ void render_portal(mat4 offsetMatrix, mat4 lightProjectionMat, vec3 portal_pos, 
 	mat4 M = skybox.get_transform().get_transform_matrix();
 	mat4 MVP = PV * M;
 	glUniformMatrix4fv(sky_eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(MVP));
-	renderer::bind(cube_map, 0);
-	glUniform1i(sky_eff.get_uniform_location("cubemap"), 0);
 	renderer::render(skybox);
 	glEnable(GL_DEPTH_TEST);
 	glDepthMask(GL_TRUE);
@@ -341,6 +322,13 @@ void render_portal(mat4 offsetMatrix, mat4 lightProjectionMat, vec3 portal_pos, 
 
 
 	renderer::bind(portal_eff);
+	glUniform1i(portal_eff.get_uniform_location("pn"), points.size());
+	glUniform1i(portal_eff.get_uniform_location("sn"), spots.size());
+	glUniform3fv(portal_eff.get_uniform_location("eye_pos"), 1, value_ptr(eye_pos()));
+	glUniform3fv(portal_eff.get_uniform_location("portal_pos"), 1, value_ptr(portal_pos));
+	glUniform3fv(portal_eff.get_uniform_location("portal_normal"), 1, value_ptr(portal_normal));
+	glUniform3fv(portal_eff.get_uniform_location("other_portal_normal"), 1, value_ptr(other_portal_normal));
+	glUniformMatrix4fv(portal_eff.get_uniform_location("offset"), 1, GL_FALSE, value_ptr(inverse(offsetMatrix)));
 	for (auto &e : meshes)
 	{
 		turbo_mesh m = e.second;
@@ -376,16 +364,9 @@ void render_portal(mat4 offsetMatrix, mat4 lightProjectionMat, vec3 portal_pos, 
 		else
 			glUniform1f(portal_eff.get_uniform_location("map_norms"), -1.0);
 
-		glUniform1i(portal_eff.get_uniform_location("pn"), points.size());
-		glUniform1i(portal_eff.get_uniform_location("sn"), spots.size());
 		glUniform1i(portal_eff.get_uniform_location("tex"), 0);
-		glUniform3fv(portal_eff.get_uniform_location("eye_pos"), 1, value_ptr(eye_pos()));
 		renderer::bind(shadows[1].buffer->get_depth(), 1);
 		glUniform1i(portal_eff.get_uniform_location("shadow_map"), 1);
-		glUniform3fv(portal_eff.get_uniform_location("portal_pos"), 1, value_ptr(portal_pos));
-		glUniform3fv(portal_eff.get_uniform_location("portal_normal"), 1, value_ptr(portal_normal));
-		glUniform3fv(portal_eff.get_uniform_location("other_portal_normal"), 1, value_ptr(other_portal_normal));
-		glUniformMatrix4fv(portal_eff.get_uniform_location("offset"), 1, GL_FALSE, value_ptr(inverse(offsetMatrix)));
 
 		renderer::render(m);
 	}
@@ -398,15 +379,17 @@ bool load_content()
 {
 	// Create a frame buffer
 	{
-		// RGBA8 2D texture, D24S8 depth/stencil texture
+		static GLenum draw_buffer = GL_COLOR_ATTACHMENT0;
+		// RGBA 2D texture, D24S8 depth/stencil texture
 		glGenTextures(1, &colour_tex);
+		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, colour_tex);
+		// NULL means reserve texture memory, but texels are undefined
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, renderer::get_screen_width(), renderer::get_screen_height(), 0, GL_BGRA, GL_UNSIGNED_BYTE, nullptr);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-		// NULL means reserve texture memory, but texels are undefined
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, renderer::get_screen_width(), renderer::get_screen_height(), 0, GL_BGRA, GL_UNSIGNED_BYTE, NULL);
 		// Reserve memory for other mipmaps levels
 		glGenerateMipmapEXT(GL_TEXTURE_2D);
 		//-------------------------
@@ -425,6 +408,7 @@ bool load_content()
 		// Also attach as a stencil
 		glFramebufferRenderbufferEXT(GL_FRAMEBUFFER_EXT, GL_STENCIL_ATTACHMENT_EXT, GL_RENDERBUFFER_EXT, depth_stencil_buffer);
 		//-------------------------
+		glDrawBuffers(1, &draw_buffer);
 		// Does the GPU support current FBO configuration?
 		GLenum status;
 		status = glCheckFramebufferStatusEXT(GL_FRAMEBUFFER_EXT);
@@ -436,6 +420,8 @@ bool load_content()
 		default:
 			cout << "Frame buffer not complete" << endl;
 		}
+
+		glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
 	}
 
 
@@ -950,13 +936,25 @@ bool render()
 
 	// Mark out portals in the stencil buffer
 	{
+		// Enables stencil testing
+		glEnable(GL_STENCIL_TEST);
+		// Disable colour mask
+		glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+		// Change value when both depth and stencil tests pass
+		glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
 		// Enables stencil buffer editing 
 		glStencilMask(0xFF);
 		// Clears the stencil buffer
 		glClear(GL_STENCIL_BUFFER_BIT);
+		glDisable(GL_CULL_FACE);
 		draw_stencil_mask(portal_meshes["portal1"], 1);
 		draw_stencil_mask(portal_meshes["portal2"], 2);
-		// Disables stencil buffer editing 
+		glEnable(GL_CULL_FACE);
+
+		// Set colour writing on
+		glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+
+		// Disable stencil buffer editing on all bits
 		glStencilMask(0x00);
 		// Clears the depth buffer
 		glClear(GL_DEPTH_BUFFER_BIT);
@@ -994,26 +992,27 @@ bool render()
 	
 	// Masking
 	// Set render target to screen
-	renderer::set_render_target();
-	renderer::bind(mask_eff);
-	glUniformMatrix4fv(mask_eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(mat4(1.0)));
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, colour_tex);
-	glUniform1i(colour_eff.get_uniform_location("tex"), 0);
-	// Set active texture
-	glActiveTexture(GL_TEXTURE0 + 1);
-	if (show_menu)
 	{
-		glBindTexture(current_mask.get_type(), current_mask.get_id());
-		glUniform1i(mask_eff.get_uniform_location("alpha_map"), 1);
+		renderer::set_render_target();
+		renderer::bind(mask_eff);
+		glUniformMatrix4fv(mask_eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(mat4(1.0)));
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, colour_tex);
+		glUniform1i(colour_eff.get_uniform_location("tex"), 0);
+		// Set active texture
+		glActiveTexture(GL_TEXTURE0 + 1);
+		if (show_menu)
+		{
+			glBindTexture(current_mask.get_type(), current_mask.get_id());
+			glUniform1i(mask_eff.get_uniform_location("alpha_map"), 1);
+		}
+		else
+		{
+			glBindTexture(masks["helpMenu"].get_type(), masks["helpMenu"].get_id());
+			glUniform1i(mask_eff.get_uniform_location("alpha_map"), 1);
+		}
+		renderer::render(screen_quad);
 	}
-	else
-	{
-		glBindTexture(masks["helpMenu"].get_type(), masks["helpMenu"].get_id());
-		glUniform1i(mask_eff.get_uniform_location("alpha_map"), 1);
-	}
-	renderer::render(screen_quad);
-	
 
 	return true;
 }

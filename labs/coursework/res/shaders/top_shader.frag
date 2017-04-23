@@ -97,8 +97,8 @@ layout(location = 5) in vec4 light_space_pos;
 // Outgoing colour
 layout(location = 0) out vec4 colour;
 
-void main() {
-// *********************************
+void main()
+{
 	// Calculate shade factor
 	float shade_factor = calculate_shadow(shadow_map, light_space_pos);
 
@@ -126,10 +126,14 @@ void main() {
 
 	colour = calculate_directional(light, mat, new_normal, view_dir, tex_colour);
     for (int i = 0; i < pn; i++)
-		colour += calculate_point(points[i], mat, position, new_normal, view_dir, tex_colour);
+	{
+		// The only shadow map used at the moment is for spotlight 1
+		if (i != 1)
+			colour += calculate_point(points[i], mat, position, new_normal, view_dir, tex_colour);
+		else if (shade_factor > 0.5f)
+			colour += calculate_point(points[i], mat, position, new_normal, view_dir, tex_colour);
+	}
     for (int i = 0; i < sn; i++)
 		colour += calculate_spot(spots[i], mat, position, new_normal, view_dir, tex_colour);
-	colour *= shade_factor;
 	colour.a = 1.0;
-    // *********************************
 }
