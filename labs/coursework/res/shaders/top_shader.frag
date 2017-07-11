@@ -56,7 +56,7 @@ vec4 calculate_point(in point_light point, in material mat, in vec3 position, in
                      in vec4 tex_colour);
 vec4 calculate_spot(in spot_light spot, in material mat, in vec3 position, in vec3 normal, in vec3 view_dir,
                     in vec4 tex_colour);
-float calculate_shadow(in sampler2DShadow   shadow_map, in vec4 light_space_pos);
+float calculate_shadow(in sampler2DShadow shadow_map, in vec4 light_space_pos);
 
 // Directional light information
 uniform directional_light light;
@@ -127,13 +127,13 @@ void main()
 	colour = calculate_directional(light, mat, new_normal, view_dir, tex_colour);
     for (int i = 0; i < pn; i++)
 	{
-		// The only shadow map used at the moment is for spotlight 1
-		if (i != 1)
-			colour += calculate_point(points[i], mat, position, new_normal, view_dir, tex_colour);
-		else if (shade_factor > 0.5f)
-			colour += calculate_point(points[i], mat, position, new_normal, view_dir, tex_colour);
+		colour += calculate_point(points[i], mat, position, new_normal, view_dir, tex_colour);
 	}
     for (int i = 0; i < sn; i++)
-		colour += calculate_spot(spots[i], mat, position, new_normal, view_dir, tex_colour);
+		// The only shadow map used at the moment is for spotlight 1
+		if (i != 1)
+			colour += calculate_spot(spots[i], mat, position, new_normal, view_dir, tex_colour);
+		else if (shade_factor > 0.5f)
+			colour += calculate_spot(spots[i], mat, position, new_normal, view_dir, tex_colour);
 	colour.a = 1.0;
 }

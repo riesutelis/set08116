@@ -231,10 +231,10 @@ void moveFreeCamera(float delta_time)
 // Draws a stencil mask for a single mesh
 void draw_stencil_mask(turbo_mesh m, int layer)
 {
-	// Put layer into stencil buffer where depth test passes
+	// Put 'layer' into stencil buffer where depth test passes
 	glStencilFunc(GL_ALWAYS, layer, 0xFF);
 
-	// Binds shadow_eff because it only calculates position information for objects
+	// Binds 'shadow_eff' because it only calculates position information for objects
 	renderer::bind(shadow_eff);
 	mat4 MVP = calculatePV() * m.get_hierarchical_transform_matrix();
 	glUniformMatrix4fv(shadow_eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(MVP));
@@ -642,6 +642,11 @@ bool load_content()
 	}
 
 
+	renderer::bind(sky_eff);
+	renderer::bind(cube_map, 0);
+	glUniform1i(sky_eff.get_uniform_location("cubemap"), 0);
+
+
 	// Set target camera
 	target_cam.set_position(vec3(0.0f, 1.0f, 50.0f));
 	target_cam.set_target(vec3(0.0f, 0.0f, 0.0f));
@@ -912,7 +917,7 @@ bool render()
 	glCullFace(GL_BACK);
 
 	
-	// Set the render target to frame (frame buffer object)
+	// Set the render target to 'frame' (frame buffer object)
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, frame);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
@@ -924,8 +929,6 @@ bool render()
 	mat4 M = skybox.get_transform().get_transform_matrix();
 	mat4 MVP = calculatePV() * M;
 	glUniformMatrix4fv(sky_eff.get_uniform_location("MVP"), 1, GL_FALSE, value_ptr(MVP));
-	renderer::bind(cube_map, 0);
-	glUniform1i(sky_eff.get_uniform_location("cubemap"), 0);
 	renderer::render(skybox);
 	glEnable(GL_DEPTH_TEST);
 	glDepthMask(GL_TRUE);
